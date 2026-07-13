@@ -5,6 +5,10 @@ name: build-and-push-base
 #   FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 # cachen koennen (ein Base-Build, ueberall reused). Gelaedert bei Push auf main
 # und bei manuellem Trigger.
+#
+# Multi-arch (amd64 + arm64): Mac/Apple-Silicon pullt arm64 nativ, der Husky-
+# Roboter (x86_64) pullt amd64. arm64 laeuft hier via QEMU-Emulation (langsamer,
+# aber die Base baut selten -> akzeptabel).
 
 on:
   push:
@@ -26,6 +30,9 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up QEMU (fuer linux/arm64 via Emulation)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,6 +57,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           # Layer-Cache im Registry -> CI-Neubuilds reuse die Langsam-Layer
