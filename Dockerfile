@@ -82,13 +82,17 @@ RUN git clone "$RG6_REPO_URL" /opt/onrobot-rg6 \
     && colcon build --packages-select rg6_description \
     || echo "WARN: rg6_description-Build fehlgeschlagen -> Greifer bleibt ohne Mesh."
 
-# --- gemeinsamer noVNC-Desktop-Start (ausgelagert) -------------------------
+# --- gemeinsame Entrypoint-Bausteine (ausgelagert) --------------------------
 # /usr/local/bin/start-desktop.sh startet Xvfb/fluxbox/x11vnc/websockify aus den
 # ENV-Variablen (DISPLAY, NOVNC_WIDTH, NOVNC_HEIGHT). Beide finalen Entrypoints
 # rufen es auf (start-desktop.sh offboard | start-desktop.sh lite), statt den
 # Block zu duplizieren.
+# /usr/local/bin/zenoh-connect.sh ist DIE eine Zenoh-Router-Logik aller
+# Container (offboard, lite; app-runner kopiert sie per Build-Kontext) —
+# RMW-Check, ZENOH_LOCAL=1 (auf dem Roboter), ROBOT_ZENOH_ENDPOINT.
 COPY scripts/start-desktop.sh /usr/local/bin/start-desktop.sh
-RUN chmod +x /usr/local/bin/start-desktop.sh
+COPY scripts/zenoh-connect.sh /usr/local/bin/zenoh-connect.sh
+RUN chmod +x /usr/local/bin/start-desktop.sh /usr/local/bin/zenoh-connect.sh
 
 # --- gemeinsame ENV-Defaults -----------------------------------------------
 # RMW/DOMAIN_ID sind Defaults; Compose kann sie ueberschreiben (mock -> fastrtps).

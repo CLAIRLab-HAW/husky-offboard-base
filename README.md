@@ -15,6 +15,11 @@ ueberall reused).
 - `rg6_description` (Greifer-Meshes) aus Source (`onrobot-rg6`) nach `/opt/onrobot-rg6`
 - `/usr/local/bin/start-desktop.sh` — gemeinsamer noVNC-Desktop-Start, den beide
   finalen Entrypoints aufrufen
+- `/usr/local/bin/zenoh-connect.sh` — **DIE eine Zenoh-Router-Logik** aller
+  Container (RMW-Check, `ZENOH_LOCAL=1` auf dem Roboter,
+  `ROBOT_ZENOH_ENDPOINT` offboard). offboard + lite rufen sie im Entrypoint
+  auf; der [app-runner](../app-runner/README.md) kopiert sie per Build-Kontext.
+  Zenoh-Verhalten ändern = nur diese Datei ändern (Base neu bauen + pushen).
 - ENV-Defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
   `LIBGL_ALWAYS_SOFTWARE=1`, `DISPLAY=:1`, `CLEARPATH_NS=a200_0553`,
   `NOVNC_WIDTH=1600`, `NOVNC_HEIGHT=900`; `EXPOSE 6080`; `CMD sleep infinity`
