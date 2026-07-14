@@ -1,45 +1,45 @@
 # husky-offboard-base
 
-Gemeinsames Basis-Image (ROS 2 Jazzy) fuer [`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard)
-und [`husky-offboard-lite`](https://github.com/hannesvoss/offboard-lite). Enthaelt
-die Layer, die in beiden finalen Dockerfiles bisher dupliziert waren, und wird
-via GHCR verteilt, sodass beide Finals es cachen koennen (ein Base-Build,
-ueberall reused).
+Shared base image (ROS 2 Jazzy) for [`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard)
+and [`husky-offboard-lite`](https://github.com/hannesvoss/offboard-lite). Contains
+the layers that were previously duplicated in both final Dockerfiles, and is
+distributed via GHCR so both finals can cache it (one base build,
+reused everywhere).
 
-## Was drin ist
-- Clearpath apt-Repo + Keyring + rosdep-Liste (`packages.clearpathrobotics.com`)
-- `colcon` (fuer den rg6-Build und die Finals)
-- noVNC-Desktop-Stack: `Xvfb` + `x11vnc` + `noVNC` + `websockify` + `fluxbox`
-  + Mesa llvmpipe (Software-GL)
-- noVNC-Default `resize=scale` (lokales Scaling im Browser)
-- `rg6_description` (Greifer-Meshes) aus Source (`onrobot-rg6`) nach `/opt/onrobot-rg6`
-- `/usr/local/bin/start-desktop.sh` — gemeinsamer noVNC-Desktop-Start, den beide
-  finalen Entrypoints aufrufen
-- `/usr/local/bin/zenoh-connect.sh` — **DIE eine Zenoh-Router-Logik** aller
-  Container (RMW-Check, `ZENOH_LOCAL=1` auf dem Roboter,
-  `ROBOT_ZENOH_ENDPOINT` offboard). offboard + lite rufen sie im Entrypoint
-  auf; der [app-runner](../app-runner/README.md) kopiert sie per Build-Kontext.
-  Zenoh-Verhalten ändern = nur diese Datei ändern (Base neu bauen + pushen).
-- ENV-Defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
+## What's inside
+- Clearpath apt repo + keyring + rosdep list (`packages.clearpathrobotics.com`)
+- `colcon` (for the rg6 build and the finals)
+- noVNC desktop stack: `Xvfb` + `x11vnc` + `noVNC` + `websockify` + `fluxbox`
+  + Mesa llvmpipe (software GL)
+- noVNC default `resize=scale` (local scaling in the browser)
+- `rg6_description` (gripper meshes) from source (`onrobot-rg6`) into `/opt/onrobot-rg6`
+- `/usr/local/bin/start-desktop.sh` — shared noVNC desktop startup that both
+  final entrypoints invoke
+- `/usr/local/bin/zenoh-connect.sh` — **THE one Zenoh router logic** shared by all
+  containers (RMW check, `ZENOH_LOCAL=1` on the robot,
+  `ROBOT_ZENOH_ENDPOINT` offboard). offboard + lite invoke it in their entrypoint;
+  the [app-runner](../app-runner/README.md) copies it via the build context.
+  Changing Zenoh behavior = change only this file (rebuild + push the base).
+- ENV defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
   `LIBGL_ALWAYS_SOFTWARE=1`, `DISPLAY=:1`, `CLEARPATH_NS=a200_0553`,
   `NOVNC_WIDTH=1600`, `NOVNC_HEIGHT=900`; `EXPOSE 6080`; `CMD sleep infinity`
 
-## Was NICHT drin ist (final-spezifisch)
+## What is NOT included (final-specific)
 - `clearpath-desktop` / `clearpath-manipulators`, `foxglove-bridge`,
   `ur-robot-driver`, `clearpath_generator_robot` (offboard)
-- `rviz2` + `moveit-ros-visualization` + `*-description`-Mesh-Pakete (lite)
-- `rg6_control` (Treiber) — offboard baut ihn inkrementell auf dem Base-Clone
-- `robot.yaml`/Generatoren-Logik + `ENTRYPOINT` — jeder Final bringt seinen
-  eigenen `entrypoint.sh`
+- `rviz2` + `moveit-ros-visualization` + `*-description` mesh packages (lite)
+- `rg6_control` (driver) — offboard builds it incrementally on the base clone
+- `robot.yaml`/generator logic + `ENTRYPOINT` — each final ships its own
+  `entrypoint.sh`
 
-## Image / Tags
-CI (`.github/workflows/build.yml`) pusht bei Push auf `main`:
+## Image / tags
+CI (`.github/workflows/build.yml`) pushes on push to `main`:
 - `ghcr.io/clairlab-haw/husky-offboard-base:jazzy` — rolling
-- `ghcr.io/clairlab-haw/husky-offboard-base:<YYYYMMDD>-<sha>` — pinbar
+- `ghcr.io/clairlab-haw/husky-offboard-base:<YYYYMMDD>-<sha>` — pinnable
 
-Layer-Cache liegt unter `ghcr.io/clairlab-haw/husky-offboard-base:buildcache`.
+The layer cache lives at `ghcr.io/clairlab-haw/husky-offboard-base:buildcache`.
 
-## Base neu bauen + pushen (manuell / lokal)
+## Rebuild + push the base (manual / local)
 ```bash
 docker buildx build \
   --push \
@@ -47,29 +47,29 @@ docker buildx build \
   -t ghcr.io/clairlab-haw/husky-offboard-base:local \
   .
 ```
-Ohne Push (nur lokal, z.B. zum Testen der Finals ohne Registry-Pull):
+Without push (local only, e.g. to test the finals without a registry pull):
 ```bash
 docker build -t husky-offboard-base:jazzy .
 ```
 
-## Finals gegen die Base bauen
-Beide finalen Dockerfiles nutzen:
+## Building the finals against the base
+Both final Dockerfiles use:
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 FROM ${BASE_IMAGE}
 ```
-Default ist das GHCR-Image. Fuer einen lokalen Build (ohne Registry-Pull) die
-Base vorher selbst bauen (s.o.) und `BASE_IMAGE` ueberschreiben:
+The default is the GHCR image. For a local build (without a registry pull), build
+the base yourself first (see above) and override `BASE_IMAGE`:
 ```bash
-# im jeweiligen finalen Repo:
-docker compose -f docker-compose.<profil>.yml build --build-arg BASE_IMAGE=husky-offboard-base:jazzy
+# in the respective final repo:
+docker compose -f docker-compose.<profile>.yml build --build-arg BASE_IMAGE=husky-offboard-base:jazzy
 ```
-oder in der Shell `BASE_IMAGE=husky-offboard-base:jazzy` setzen, sofern das
-Compose-File `build.args.BASE_IMAGE` mit Default deklariert (siehe finale
+or set `BASE_IMAGE=husky-offboard-base:jazzy` in your shell, provided the
+compose file declares `build.args.BASE_IMAGE` with a default (see the final
 READMEs).
 
-## Pinnen
-Fuer reproduzierbare Final-Builds den Base-Digest pinnen:
+## Pinning
+For reproducible final builds, pin the base digest:
 ```bash
 docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 # ->  FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy@sha256:...
