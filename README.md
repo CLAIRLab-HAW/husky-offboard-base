@@ -17,6 +17,7 @@ reused everywhere).
   final entrypoints invoke
 - `/usr/local/bin/zenoh-connect.sh` — **THE one Zenoh router logic** shared by all
   containers (RMW check, `ZENOH_LOCAL=1` on the robot,
+  `ZENOH_STANDALONE=1` isolated local router for the zenoh mock demo,
   `ROBOT_ZENOH_ENDPOINT` offboard). offboard + lite invoke it in their entrypoint;
   the [app-runner](../app-runner/README.md) copies it via the build context.
   Changing Zenoh behavior = change only this file (rebuild + push the base).
