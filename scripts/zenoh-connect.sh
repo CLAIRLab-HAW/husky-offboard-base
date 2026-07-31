@@ -12,7 +12,7 @@
 #   ZENOH_STANDALONE=1                   -> lokalen rmw_zenohd OHNE connect-
 #                                           Endpoints starten: isolierter
 #                                           Zenoh-Graph (mock/dev auf derselben
-#                                           Middleware wie der Roboter; Mac-
+#                                           Middleware wie der Roboter; Workstation-
 #                                           Clients joinen via tcp/localhost:7447,
 #                                           wenn der Port gepublished ist)
 #   ROBOT_ZENOH_ENDPOINT gesetzt         -> lokalen rmw_zenohd starten, der sich
