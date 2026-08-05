@@ -22,14 +22,28 @@
 #
 # Wird gesourct ODER ausgefuehrt (startet den Router als Hintergrundprozess;
 # Log: /tmp/zenohd.log). ROS muss bereits gesourct sein (ros2-CLI).
+
+if [ -r /usr/local/bin/clearlog.sh ]; then
+    . /usr/local/bin/clearlog.sh
+else
+    log_debug() { :; }
+    # shellcheck disable=SC2059
+    log_info()  { if [ "$#" -gt 1 ]; then printf "$@" >&2; else printf '%s' "${1:-}" >&2; fi; echo >&2; }
+    log_warn()  { log_info "$@"; }
+    log_error() { log_info "$@"; }
+    log_phase() { log_info "$@"; }
+    clearlog_name() { :; }
+fi
+clearlog_name base.zenoh
+
 _prefix="${1:-container}"
 
 if [ "${RMW_IMPLEMENTATION:-}" != "rmw_zenoh_cpp" ]; then
-    echo "[${_prefix}] RMW=${RMW_IMPLEMENTATION:-unset} (kein Zenoh) -> kein Router."
+    log_info "[%s] RMW=%s (kein Zenoh) -> kein Router." "${_prefix}" "${RMW_IMPLEMENTATION:-unset}"
 elif [ "${ZENOH_LOCAL:-0}" = "1" ]; then
-    echo "[${_prefix}] nutze robot-lokalen Zenoh-Router (localhost:7447) -> kein eigener Router."
+    log_info "[%s] nutze robot-lokalen Zenoh-Router (localhost:7447) -> kein eigener Router." "${_prefix}"
 elif [ "${ZENOH_STANDALONE:-0}" = "1" ]; then
-    echo "[${_prefix}] starte rmw_zenohd (standalone, isolierter Graph, :7447)"
+    log_info "[%s] starte rmw_zenohd (standalone, isolierter Graph, :7447)" "${_prefix}"
     ros2 run rmw_zenoh_cpp rmw_zenohd >/tmp/zenohd.log 2>&1 &
     sleep 3
 elif [ -n "${ROBOT_ZENOH_ENDPOINT:-}" ]; then
@@ -37,9 +51,9 @@ elif [ -n "${ROBOT_ZENOH_ENDPOINT:-}" ]; then
 { mode: "router", connect: { endpoints: ["${ROBOT_ZENOH_ENDPOINT}"] } }
 EOF
     export ZENOH_ROUTER_CONFIG_URI=/tmp/router_config.json5
-    echo "[${_prefix}] starte rmw_zenohd -> ${ROBOT_ZENOH_ENDPOINT}"
+    log_info "[%s] starte rmw_zenohd -> %s" "${_prefix}" "${ROBOT_ZENOH_ENDPOINT}"
     ros2 run rmw_zenoh_cpp rmw_zenohd >/tmp/zenohd.log 2>&1 &
     sleep 3
 else
-    echo "[${_prefix}] WARN: ROBOT_ZENOH_ENDPOINT nicht gesetzt -> keine Verbindung zum Roboter."
+    log_warn "[%s] ROBOT_ZENOH_ENDPOINT nicht gesetzt -> keine Verbindung zum Roboter." "${_prefix}"
 fi

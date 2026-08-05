@@ -1,0 +1,163 @@
+# clearlog.sh -- die Shell-Fassung der Konsolenausgabe aus libs/clearlog.
+#
+# Nicht ausfuehren, sondern sourcen:
+#
+#     . /usr/local/bin/clearlog.sh
+#     clearlog_name offboard.entry
+#     log_info "robot.yaml geladen -> %s" "$dest"
+#
+# Erzeugt dieselbe Zeile wie ClearlogHandler: am Terminal Symbole und Farbe,
+# ohne Terminal Level als Wort und volles Datum -- damit
+# `docker logs | grep WARN` traegt.  Beide Fassungen sind per Golden-Test
+# aneinandergebunden: libs/clearlog/tests/test_shell_parity.py.
+#
+# Vorlage plus Argumente, nicht "...$var..." -- dieselbe Regel wie in Python.
+#
+# CLEARLOG_LEVEL wird nur im ROOT-Anteil ausgewertet (der Eintrag ohne '=').
+# 'warning,twinlink.mcap=debug' wirkt hier wie 'warning'; die Zuweisungen pro
+# Logger bleiben Python-Sache.
+#
+# JEDE Funktion gibt 0 zurueck.  Die Skripte hier laufen teils unter `set -e`,
+# und ein Rueckgabewert != 0 wuerde sie mitten im Setup toeten.  Ausserdem
+# laufen sie unter `set -u`: kein Zugriff auf ungesetzte Variablen.
+#
+# Laeuft unter POSIX-sh (dash) genauso wie unter bash -- netbird-entrypoint-
+# override.sh (#!/bin/sh) sourct sie produktiv, auch unter set -eu. Einzige
+# echte Anforderung: GNU date fuer die Millisekunden; fehlt %3N, entfaellt
+# die Nachkommastelle, ohne dass die Spalte springt.
+
+CLEARLOG_NAME="${CLEARLOG_NAME:-shell}"
+
+clearlog_name() { CLEARLOG_NAME="${1:-shell}"; return 0; }
+
+_cl_num() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        debug)          printf 10 ;;
+        info)           printf 20 ;;
+        warn|warning)   printf 30 ;;
+        error)          printf 40 ;;
+        critical|fatal) printf 50 ;;
+        *)              printf 20 ;;
+    esac
+    return 0
+}
+
+# --- einmalige Initialisierung beim Sourcen --------------------------------
+
+_cl_threshold=20
+_cl_init_threshold() {
+    local spec item old_ifs
+    spec="${CLEARLOG_LEVEL:-}"
+    [ -n "$spec" ] || return 0
+    old_ifs="${IFS:-}"
+    IFS=','
+    for item in $spec; do
+        case "$item" in
+            *=*) : ;;                 # Zuweisung pro Logger -> nur Python
+            "")  : ;;
+            *)   _cl_threshold="$(_cl_num "$item")" ;;
+        esac
+    done
+    IFS="$old_ifs"
+    return 0
+}
+
+_cl_tty=0
+_cl_init_tty() {
+    case "$(printf '%s' "${CLEARLOG_COLOR:-auto}" | tr '[:upper:]' '[:lower:]')" in
+        always) _cl_tty=1; return 0 ;;
+        never)  _cl_tty=0; return 0 ;;
+    esac
+    if [ -n "${NO_COLOR+x}" ]; then _cl_tty=0; return 0; fi
+    if [ -t 2 ]; then _cl_tty=1; else _cl_tty=0; fi
+    return 0
+}
+
+# GNU date kann %3N; BSD date gibt '%3N' literal aus.  Einmal pruefen, statt
+# den Platzhalter in die Logs zu schreiben.
+_cl_ms=1
+_cl_init_ms() {
+    case "$(date '+%3N' 2>/dev/null)" in
+        ''|*[!0-9]*) _cl_ms=0 ;;
+        *)           _cl_ms=1 ;;
+    esac
+    return 0
+}
+
+_cl_init_threshold
+_cl_init_tty
+_cl_init_ms
+
+# --- Ausgabe ---------------------------------------------------------------
+
+_cl_stamp() {
+    if [ "$_cl_tty" = 1 ]; then
+        if [ "$_cl_ms" = 1 ]; then date '+%H:%M:%S.%3N'
+        else printf '%s    ' "$(date '+%H:%M:%S')"; fi   # Spalte bleibt 12
+    else
+        if [ "$_cl_ms" = 1 ]; then date '+%Y-%m-%d %H:%M:%S.%3N'
+        else printf '%s    ' "$(date '+%Y-%m-%d %H:%M:%S')"; fi
+    fi
+    return 0
+}
+
+_cl_emit() {
+    local num="$1" word="$2" sym="$3" col="$4"
+    shift 4
+    [ "$num" -ge "$_cl_threshold" ] || return 0
+    local fmt="${1:-}"
+    shift || true
+    local msg stamp
+    if [ "$#" -gt 0 ]; then
+        # shellcheck disable=SC2059 -- Vorlage + Argumente ist genau die Absicht.
+        msg="$(printf "$fmt" "$@" 2>/dev/null)" || msg="$fmt"
+    else
+        # Wie logging.LogRecord.getMessage(): ohne Argumente bleibt die
+        # Meldung unangetastet -- sonst zerstoert ein literales '%' sie
+        # lautlos (printf liest z.B. "% g" aus "20% geladen" als Konversion).
+        msg="$fmt"
+    fi
+    stamp="$(_cl_stamp)"
+    if [ "$_cl_tty" = 1 ]; then
+        # Harter Schnitt (%-20.20s) statt Pythons Mitte-Ellipsis aus
+        # handler.py:shorten() -- bewusst akzeptierter Unterschied, kein
+        # Versehen.  Die Namenskonvention (<paket>.<bereich>, hoechstens
+        # 20 Zeichen) deckelt Namen bei genau NAME_WIDTH, dieser Fall tritt
+        # also praktisch nie ein.
+        printf '\033[90m%s\033[0m %b%s\033[0m \033[90m%-20.20s\033[0m  %s\n' \
+               "$stamp" "$col" "$sym" "$CLEARLOG_NAME" "$msg" >&2
+    else
+        printf '%s  %-5s  %s  %s\n' "$stamp" "$word" "$CLEARLOG_NAME" "$msg" >&2
+    fi
+    return 0
+}
+
+log_debug() { _cl_emit 10 DEBUG '·' '\033[90m'  "$@"; return 0; }
+log_info()  { _cl_emit 20 INFO  '•' '\033[34m'  "$@"; return 0; }
+log_warn()  { _cl_emit 30 WARN  '▲' '\033[33m'  "$@"; return 0; }
+log_error() { _cl_emit 40 ERROR '✖' '\033[31m'  "$@"; return 0; }
+
+log_phase() {
+    [ 20 -ge "$_cl_threshold" ] || return 0
+    local fmt="${1:-}"
+    shift || true
+    local title
+    if [ "$#" -gt 0 ]; then
+        # shellcheck disable=SC2059
+        title="$(printf "$fmt" "$@" 2>/dev/null)" || title="$fmt"
+    else
+        # Wie in _cl_emit: ohne Argumente nicht formatieren, sonst zerstoert
+        # ein literales '%' ("Setup zu 50% abgeschlossen") den Titel lautlos.
+        title="$fmt"
+    fi
+    if [ "$_cl_tty" = 1 ]; then
+        local width="${COLUMNS:-80}" line=""
+        local n=$(( width - ${#title} - 1 ))
+        [ "$n" -lt 3 ] && n=3
+        while [ "${#line}" -lt "$n" ]; do line="$line─"; done
+        printf '\033[90m%s %s\033[0m\n' "$title" "$line" >&2
+    else
+        printf -- '--- %s ---\n' "$title" >&2
+    fi
+    return 0
+}

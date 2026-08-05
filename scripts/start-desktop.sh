@@ -15,12 +15,25 @@
 # hinausragt.
 set -uo pipefail
 
+if [ -r /usr/local/bin/clearlog.sh ]; then
+    . /usr/local/bin/clearlog.sh
+else
+    log_debug() { :; }
+    # shellcheck disable=SC2059
+    log_info()  { if [ "$#" -gt 1 ]; then printf "$@" >&2; else printf '%s' "${1:-}" >&2; fi; echo >&2; }
+    log_warn()  { log_info "$@"; }
+    log_error() { log_info "$@"; }
+    log_phase() { log_info "$@"; }
+    clearlog_name() { :; }
+fi
+clearlog_name base.desktop
+
 _prefix="${1:-desktop}"
 
 export DISPLAY="${DISPLAY:-:1}"
 export NOVNC_WIDTH="${NOVNC_WIDTH:-1600}"
 export NOVNC_HEIGHT="${NOVNC_HEIGHT:-900}"
-echo "[${_prefix}] starte virtuellen Desktop auf ${DISPLAY} (noVNC :6080, ${NOVNC_WIDTH}x${NOVNC_HEIGHT})"
+log_info "[%s] starte virtuellen Desktop auf %s (noVNC :6080, %sx%s)" "${_prefix}" "${DISPLAY}" "${NOVNC_WIDTH}" "${NOVNC_HEIGHT}"
 
 Xvfb "${DISPLAY}" -screen 0 "${NOVNC_WIDTH}x${NOVNC_HEIGHT}x24" -ac >/tmp/xvfb.log 2>&1 &
 sleep 1

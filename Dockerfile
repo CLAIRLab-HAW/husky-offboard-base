@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         xvfb x11vnc novnc websockify fluxbox xterm \
         mesa-utils libgl1-mesa-dri \
+        python3-rich \
     && rm -rf /var/lib/apt/lists/*
 
 # --- noVNC per Default mit lokalem Scaling ---------------------------------
@@ -92,7 +93,10 @@ RUN git clone "$RG6_REPO_URL" /opt/onrobot-rg6 \
 # RMW-Check, ZENOH_LOCAL=1 (auf dem Roboter), ROBOT_ZENOH_ENDPOINT.
 COPY scripts/start-desktop.sh /usr/local/bin/start-desktop.sh
 COPY scripts/zenoh-connect.sh /usr/local/bin/zenoh-connect.sh
+COPY scripts/clearlog.sh /usr/local/bin/clearlog.sh
 RUN chmod +x /usr/local/bin/start-desktop.sh /usr/local/bin/zenoh-connect.sh
+# clearlog.sh wird gesourct, nicht ausgefuehrt -> bewusst kein chmod +x,
+# damit niemand auf die Idee kommt, es zu starten.
 
 # --- gemeinsame ENV-Defaults -----------------------------------------------
 # RMW/DOMAIN_ID sind Defaults; Compose kann sie ueberschreiben (mock -> fastrtps).
@@ -106,6 +110,14 @@ ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp \
     CLEARPATH_NS=a200_0553 \
     NOVNC_WIDTH=1600 \
     NOVNC_HEIGHT=900
+
+# Bringt die rcutils-Ausgabe der ROS-Nodes auf dieselbe Spaltenfolge wie
+# clearlog: Zeit, Level als Wort, Name, Text.  Zwei Grenzen bleiben --
+# {time} sind Epoch-Sekunden (rcutils kennt kein strftime), und das Level
+# ist ungepolstert (keine Breitenangaben).  Compose kann das ueberschreiben.
+# RCUTILS_COLORIZED_OUTPUT wird bewusst NICHT gesetzt: unbelegt erkennt
+# rcutils das Terminal selbst, genau wie clearlog.
+ENV RCUTILS_CONSOLE_OUTPUT_FORMAT="{time}  {severity}  {name}  {message}"
 
 EXPOSE 6080
 
