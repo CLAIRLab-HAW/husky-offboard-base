@@ -1,0 +1,11 @@
+# Changelog — husky-offboard-base
+
+What changed when. The current state is described in the [README](README.md).
+
+## 2026-07-13
+
+- Repository and image created: the layers that had been duplicated in the
+  `husky-offboard` and `husky-offboard-lite` Dockerfiles were pulled out into
+  this shared ROS 2 Jazzy base, distributed via GHCR so both finals cache
+  against one base build. The Zenoh layer moved in here from `husky-offboard`
+  in the same window.

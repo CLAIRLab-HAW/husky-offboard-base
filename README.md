@@ -2,7 +2,7 @@
 
 Shared base image (ROS 2 Jazzy) for [`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard)
 and [`husky-offboard-lite`](https://github.com/hannesvoss/offboard-lite). Contains
-the layers that were previously duplicated in both final Dockerfiles, and is
+the layers both final Dockerfiles share, and is
 distributed via GHCR so both finals can cache it (one base build,
 reused everywhere).
 
