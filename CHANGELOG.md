@@ -7,6 +7,25 @@ die Versionierung [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- **`VNC_PASSWORD` in `start-desktop.sh` — ohne Passwort kommt kein nativer
+  VNC-Client herein.** `x11vnc` lief mit `-nopw` und bot damit genau einen
+  Security-Typ an: `None`. Zwei Folgen, die beide wie ein Netzwerkfehler
+  aussehen und keiner sind:
+
+  - Apples Bildschirmfreigabe akzeptiert `None` nicht und meldet stattdessen
+    etwas über den *entfernten Rechner* ("Vergewissere dich, dass die
+    Bildschirmfreigabe … aktiviert ist"), obwohl der Handshake scheiterte.
+  - Ohne Passwort bindet `x11vnc` auf dem Roboter (`network_mode: host`) an
+    `127.0.0.1` statt `0.0.0.0`. Am 2026-08-20 an a200-0553 gemessen: `6080`
+    offen, `5900` nur auf loopback, von außen "Connection refused".
+
+  Mit gesetztem `VNC_PASSWORD` bietet `x11vnc` `VNC Auth` an und lauscht per
+  `-listen 0.0.0.0` explizit auf allen Interfaces. Ohne bleibt alles wie
+  bisher; noVNC auf `6080` ist in beiden Fällen unberührt, weil `websockify`
+  containerintern auf `localhost:5900` geht. VNC-Passwörter sind
+  protokollbedingt auf 8 Zeichen begrenzt.
+
 ## [0.2.0] - 2026-08-19
 
 - Repository and image created: the layers that had been duplicated in the

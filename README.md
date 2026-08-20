@@ -40,8 +40,22 @@ This image is not run directly — the finals build `FROM` it. See
   + Mesa llvmpipe (software GL)
 - noVNC default `resize=scale` (local scaling in the browser)
 - `rg6_description` (gripper meshes) from source (`onrobot-rg6`) into `/opt/onrobot-rg6`
-- `/usr/local/bin/start-desktop.sh` — shared noVNC desktop startup that both
-  final entrypoints invoke
+- `/usr/local/bin/start-desktop.sh` — shared desktop startup that both final
+  entrypoints invoke. Reads `DISPLAY`, `NOVNC_WIDTH`, `NOVNC_HEIGHT` and
+  `VNC_PASSWORD` from the environment.
+
+  **`VNC_PASSWORD` decides whether a native VNC client can get in at all.**
+  Unset (the default), `x11vnc` runs `-nopw` and offers exactly one security
+  type: `None`. Apple's Screen Sharing refuses that type and answers with a
+  message about the *remote machine* — "make sure Screen Sharing is enabled" —
+  when what actually failed is the handshake. On the robot (`network_mode:
+  host`) the passwordless server also binds `127.0.0.1` instead of `0.0.0.0`,
+  so port 5900 answers *Connection refused* from anywhere else. Measured on
+  a200-0553 on 2026-08-20: 6080 open, 5900 loopback-only.
+
+  Set it, and `x11vnc` offers `VNC Auth` and listens on `0.0.0.0`. The
+  protocol caps VNC passwords at 8 characters. noVNC on 6080 is unaffected
+  either way — `websockify` reaches 5900 over the container's own loopback.
 - `/usr/local/bin/zenoh-connect.sh` — **THE one Zenoh router logic** shared by all
   containers (RMW check, `ZENOH_LOCAL=1` on the robot,
   `ZENOH_STANDALONE=1` isolated local router for the zenoh mock demo,
@@ -51,6 +65,7 @@ This image is not run directly — the finals build `FROM` it. See
 - ENV defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
   `LIBGL_ALWAYS_SOFTWARE=1`, `DISPLAY=:1`, `CLEARPATH_NS=a200_0553`,
   `NOVNC_WIDTH=1600`, `NOVNC_HEIGHT=900`; `EXPOSE 6080`; `CMD sleep infinity`
+  (`VNC_PASSWORD` has no ENV default — unset means "no password", see above)
 
 ### What is NOT included (final-specific)
 - `clearpath-desktop` / `clearpath-manipulators`, `foxglove-bridge`,
