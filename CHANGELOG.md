@@ -7,6 +7,21 @@ die Versionierung [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Behoben
+- **Nach `docker start` blieb der Desktop tot.** `start-desktop.sh` startete
+  `Xvfb` ohne das Lock des vorigen Laufs zu entfernen. Ein neu *angelegter*
+  Container hat ein leeres `/tmp`, ein wieder*gestarteter* nicht — dort lag
+  `/tmp/.X1-lock` noch, `Xvfb` brach mit *"Server is already active for display
+  1"* ab, `fluxbox` und `x11vnc` fanden kein Display und starben mit.
+  `websockify` lauschte weiter auf `6080`, weshalb es von außen wie ein
+  gesunder Container aussah: `6080` offen, `5900` keine Antwort, noVNC meldete
+  *"Failed to connect to server"*. Am 2026-08-20 an a200-0553 reproduziert —
+  Stop + Start über die Cockpit-Seite, während `up -d --force-recreate`
+  unauffällig war.
+
+  Aufgeräumt wird nur ein **verwaistes** Lock: die Datei enthält die PID ihres
+  `Xvfb`, und solange `/proc/<pid>` existiert, bleibt sie liegen.
+
 ### Hinzugefügt
 - **`VNC_PASSWORD` in `start-desktop.sh` — ohne Passwort kommt kein nativer
   VNC-Client herein.** `x11vnc` lief mit `-nopw` und bot damit genau einen

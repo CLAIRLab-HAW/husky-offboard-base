@@ -35,6 +35,39 @@ export NOVNC_WIDTH="${NOVNC_WIDTH:-1600}"
 export NOVNC_HEIGHT="${NOVNC_HEIGHT:-900}"
 log_info "[%s] starte virtuellen Desktop auf %s (noVNC :6080, %sx%s)" "${_prefix}" "${DISPLAY}" "${NOVNC_WIDTH}" "${NOVNC_HEIGHT}"
 
+# --- Reste eines frueheren Laufs -------------------------------------------
+# `docker start` faehrt DENSELBEN Container wieder hoch, und /tmp ueberlebt das.
+# Darin liegt das Lock des alten Xvfb (/tmp/.X1-lock samt Socket in
+# /tmp/.X11-unix). Xvfb bricht dann mit "Server is already active for display 1"
+# ab; fluxbox und x11vnc finden kein Display und sterben mit -- websockify
+# lauscht aber weiter auf 6080. Von aussen sieht das aus wie ein laufender
+# Container mit totem VNC: 6080 offen, 5900 keine Antwort, noVNC meldet
+# "Failed to connect to server".
+#
+# Am 2026-08-20 an a200-0553 genau so beobachtet, nachdem der Container ueber
+# Cockpit gestoppt und wieder gestartet wurde. Ein `up -d --force-recreate` war
+# unauffaellig -- ein frischer Container hat ein leeres /tmp, deshalb faellt es
+# ausschliesslich nach stop/start auf.
+#
+# Aufgeraeumt wird nur, was wirklich verwaist ist: die Lock-Datei enthaelt die
+# PID ihres Xvfb. Laeuft die noch, ist der Desktop schon da und wir fassen
+# nichts an -- lieber ein zweiter Xvfb, der folgenlos scheitert, als ein
+# weggeraeumtes Lock unter einem arbeitenden X-Server.
+_dpy_num="${DISPLAY#:}"
+_dpy_num="${_dpy_num%%.*}"
+_dpy_lock="/tmp/.X${_dpy_num}-lock"
+if [ -e "$_dpy_lock" ]; then
+    _dpy_pid="$(tr -dc '0-9' < "$_dpy_lock" 2>/dev/null || true)"
+    if [ -n "${_dpy_pid:-}" ] && [ -d "/proc/${_dpy_pid}" ]; then
+        log_warn "[%s] %s ist bereits belegt (PID %s) -- Lock bleibt liegen." \
+            "${_prefix}" "${DISPLAY}" "${_dpy_pid}"
+    else
+        log_info "[%s] verwaistes Lock von %s entfernt (Rest eines frueheren Laufs)." \
+            "${_prefix}" "${DISPLAY}"
+        rm -f "$_dpy_lock" "/tmp/.X11-unix/X${_dpy_num}"
+    fi
+fi
+
 Xvfb "${DISPLAY}" -screen 0 "${NOVNC_WIDTH}x${NOVNC_HEIGHT}x24" -ac >/tmp/xvfb.log 2>&1 &
 sleep 1
 fluxbox >/tmp/fluxbox.log 2>&1 &
