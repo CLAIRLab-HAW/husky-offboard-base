@@ -1,14 +1,12 @@
 name: build-and-push-base
 
-# Baut das husky-offboard-base-Image und pusht es nach GHCR, sodass die beiden
-# finalen Images (husky-offboard, husky-offboard-lite) es per
+# Builds the husky-offboard-base image and pushes it to GHCR so that every final image can cache it via
 #   FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy
-# cachen koennen (ein Base-Build, ueberall reused). Gelaedert bei Push auf main
-# und bei manuellem Trigger.
+# (one base build, reused everywhere). Triggered on push to main and manually.
 #
-# Multi-arch (amd64 + arm64): Mac/Apple-Silicon pullt arm64 nativ, der Husky-
-# Roboter (x86_64) pullt amd64. arm64 laeuft hier via QEMU-Emulation (langsamer,
-# aber die Base baut selten -> akzeptabel).
+# Multi-arch (amd64 + arm64) is not a nicety here: the Mac pulls arm64 natively and the Husky robot (x86_64) pulls
+# amd64 for the `lite` stage that runs ON it. arm64 is built under QEMU emulation -- slower, but the base builds
+# rarely.
 
 on:
   push:
@@ -31,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up QEMU (fuer linux/arm64 via Emulation)
+      - name: Set up QEMU (for linux/arm64 via emulation)
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
@@ -60,6 +58,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          # Layer-Cache im Registry -> CI-Neubuilds reuse die Langsam-Layer
+          # Registry layer cache -> a CI rebuild reuses the slow layers
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max

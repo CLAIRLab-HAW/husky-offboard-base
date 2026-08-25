@@ -1,24 +1,27 @@
 # husky-offboard-base
 
-Shared base image (ROS 2 Jazzy) for [`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard)
-and [`husky-offboard-lite`](https://github.com/hannesvoss/offboard-lite). Contains
-the layers both final Dockerfiles share, and is
-distributed via GHCR so both finals can cache it (one base build,
-reused everywhere).
+Shared base image (ROS 2 Jazzy) for every container under
+[`deploy/`](../README.md) — the four stages of
+[`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard) and
+[`app-runner`](../app-runner/README.md). It carries the layers all of them
+share and nothing else, and is distributed via GHCR so one base build is
+reused everywhere.
 
 ## Features
 
-- **One base build, reused everywhere**: the layers `husky-offboard` and
-  `husky-offboard-lite` share, distributed via GHCR so both finals cache
-  against it.
+- **One base build, reused everywhere**: the layers every deploy image shares,
+  distributed via GHCR so the finals cache against it.
 - **The one Zenoh router logic** (`zenoh-connect.sh`) instead of a copy per
   final.
-- **GUI over noVNC** (Xvfb + x11vnc + fluxbox) — no XQuartz, no X11 forwarding.
-- **arm64 native**, no emulation.
+- **`rmw_zenoh_cpp` — the middleware the robot speaks, and the only one we
+  speak.** The image ships the package its own `RMW_IMPLEMENTATION` default
+  names, so a bare `docker run` of this image works.
+- **arm64 and amd64**, both built natively-tagged by CI; no emulation on
+  either host.
 
 ## Tech Stack
 
-ROS 2 Jazzy desktop, Zenoh (`rmw_zenoh_cpp`), noVNC/x11vnc/fluxbox, clearlog.
+ROS 2 Jazzy (`ros-base`), Zenoh (`rmw_zenoh_cpp`), clearlog.
 
 ## Installation
 
@@ -34,44 +37,53 @@ This image is not run directly — the finals build `FROM` it. See
 *Building the finals against the base*.
 
 ### What's inside
-- Clearpath apt repo + keyring + rosdep list (`packages.clearpathrobotics.com`)
-- `colcon` (for the rg6 build and the finals)
-- noVNC desktop stack: `Xvfb` + `x11vnc` + `noVNC` + `websockify` + `fluxbox`
-  + Mesa llvmpipe (software GL)
-- noVNC default `resize=scale` (local scaling in the browser)
-- `rg6_description` (gripper meshes) from source (`onrobot-rg6`) into `/opt/onrobot-rg6`
-- `/usr/local/bin/start-desktop.sh` — shared desktop startup that both final
-  entrypoints invoke. Reads `DISPLAY`, `NOVNC_WIDTH`, `NOVNC_HEIGHT` and
-  `VNC_PASSWORD` from the environment.
+Four things, and that is the whole list — everything with a narrower audience
+belongs to a stage, not here.
 
-  **`VNC_PASSWORD` decides whether a native VNC client can get in at all.**
-  Unset (the default), `x11vnc` runs `-nopw` and offers exactly one security
-  type: `None`. Apple's Screen Sharing refuses that type and answers with a
-  message about the *remote machine* — "make sure Screen Sharing is enabled" —
-  when what actually failed is the handshake. On the robot (`network_mode:
-  host`) the passwordless server also binds `127.0.0.1` instead of `0.0.0.0`,
-  so port 5900 answers *Connection refused* from anywhere else. Measured on
-  a200-0553 on 2026-08-20: 6080 open, 5900 loopback-only.
-
-  Set it, and `x11vnc` offers `VNC Auth` and listens on `0.0.0.0`. The
-  protocol caps VNC passwords at 8 characters. noVNC on 6080 is unaffected
-  either way — `websockify` reaches 5900 over the container's own loopback.
+- `rmw_zenoh_cpp` — the middleware every image speaks; the ENV default below
+  names it, so it has to be here
+- `python3-rich` — the renderer behind [`clearlog`](../../libs/clearlog/README.md)'s
+  Python handler; needed by every container that logs, display or not
 - `/usr/local/bin/zenoh-connect.sh` — **THE one Zenoh router logic** shared by all
-  containers (RMW check, `ZENOH_LOCAL=1` on the robot,
-  `ZENOH_STANDALONE=1` isolated local router for the zenoh mock demo,
-  `ROBOT_ZENOH_ENDPOINT` offboard). offboard + lite invoke it in their entrypoint;
-  the [app-runner](../app-runner/README.md) copies it via the build context.
+  containers (`ZENOH_LOCAL=1` on the robot, `ZENOH_STANDALONE=1` for the
+  isolated mock graph, `ROBOT_ZENOH_ENDPOINT` for a remote one). Every entrypoint invokes it; the
+  [app-runner](../app-runner/README.md) copies it via the build context.
   Changing Zenoh behavior = change only this file (rebuild + push the base).
+- `/usr/local/bin/clearlog.sh` — the shell half of `clearlog`, sourced (not
+  executed) by every entrypoint and helper so container lines and Python lines
+  share one format
 - ENV defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
-  `LIBGL_ALWAYS_SOFTWARE=1`, `DISPLAY=:1`, `CLEARPATH_NS=a200_0553`,
-  `NOVNC_WIDTH=1600`, `NOVNC_HEIGHT=900`; `EXPOSE 6080`; `CMD sleep infinity`
-  (`VNC_PASSWORD` has no ENV default — unset means "no password", see above)
+  `CLEARPATH_NS=a200_0553`, `RCUTILS_CONSOLE_OUTPUT_FORMAT`;
+  `CMD sleep infinity`
 
-### What is NOT included (final-specific)
-- `clearpath-desktop` / `clearpath-manipulators`, `foxglove-bridge`,
-  `ur-robot-driver`, `clearpath_generator_robot` (offboard)
-- `rviz2` + `moveit-ros-visualization` + `*-description` mesh packages (lite)
-- `rg6_control` (driver) — offboard builds it incrementally on the base clone
+### What is NOT included
+- **The noVNC desktop** — `Xvfb`, `x11vnc`, `noVNC`, `websockify`, `fluxbox`,
+  `xterm`, Mesa, the `resize=scale` patch and `start-desktop.sh` all live in
+  the `viewer` stage of
+  [`husky-offboard`](../husky-offboard/README.md#image-structure), which is
+  still one place to change them: `lite`, `offboard` and `mock-robot` all
+  inherit from `viewer`. Anything in this image is paid for by every deploy
+  image, and that apt layer with its X11/Mesa closure is 446 MB (measured
+  2026-08-25 with `docker history`) — which `spact-logic`, an action client
+  with no display, has no use for.
+- **The Clearpath apt repo, keyring and rosdep list**, plus the
+  `wget`/`gnupg`/`lsb-release` that exist only to set them up, and
+  `ros-jazzy-xacro` — also in `viewer`. Measured 2026-08-26: the `spact-logic`
+  image has ZERO clearpath packages installed, and
+  [`app-runner`](../app-runner/README.md) does not build on this base at all.
+- **`rg6_description`** (the gripper meshes, from the `onrobot-rg6` source) —
+  also in `viewer`, together with the `RG6_REF` checkout. Only images that
+  resolve `package://` mesh URIs out of the robot URDF need them, which is the
+  same four stages as the desktop. `rg6_control` (the driver) is narrower
+  still: `mock-robot` builds it, because only that stage runs
+  `rg6_moveit_patch`.
+- `git`, `curl` and `colcon` — they ship with `ros:jazzy-ros-base`
+  (`python3-colcon-common-extensions` included, so `colcon build` works;
+  measured 2026-08-26). Naming them here would suggest they are ours.
+- `clearpath-desktop` / `clearpath-manipulators`, `clearpath_generator_robot`,
+  `foxglove-bridge`, the Nav2/UR packages, `rviz2` +
+  `moveit-ros-visualization` + the `*-description` mesh packages — all
+  stage-specific
 - `robot.yaml`/generator logic + `ENTRYPOINT` — each final ships its own
   `entrypoint.sh`
 
@@ -96,7 +108,7 @@ docker build -t husky-offboard-base:jazzy .
 ```
 
 ### Building the finals against the base
-Both final Dockerfiles use:
+Every final Dockerfile uses:
 ```dockerfile
 ARG BASE_IMAGE=ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 FROM ${BASE_IMAGE}
@@ -120,9 +132,11 @@ docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 
 ## Related
 
-- [husky-offboard](../husky-offboard/README.md) — the full offboard container
-- [husky-offboard-lite](../husky-offboard-lite/README.md) — the slim RViz+MoveIt
-  client
+- [husky-offboard](../husky-offboard/README.md) — the four stages built on this
+  base: `viewer`, `lite`, `offboard`, `mock-robot`, plus the `logic` image
+- [app-runner](../app-runner/README.md) — the one image for the thin SDK apps
+- [clearlog](../../libs/clearlog/README.md) — the log format `clearlog.sh`
+  implements for the shell side
 
 ## Versioning
 
