@@ -19,8 +19,10 @@ reused everywhere.
 - **`rmw_zenoh_cpp` — the middleware the robot speaks, and the only one we
   speak.** The image ships the package its own `RMW_IMPLEMENTATION` default
   names, so a bare `docker run` of this image works.
-- **arm64 and amd64**, both built natively-tagged by CI; no emulation on
-  either host.
+- **arm64 and amd64**, and `:jazzy` always carries both — a container runs
+  natively on the Mac and on the robot, no emulation on either host. What
+  differs is how often each half is *rebuilt*: see *Which architecture is
+  rebuilt when* below.
 
 ## Tech Stack
 
@@ -140,6 +142,40 @@ For reproducible final builds, pin the base digest:
 docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 # ->  FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy@sha256:...
 ```
+
+### Which architecture is rebuilt when
+
+`:jazzy` is multi-arch at all times, but the two halves are not equally cheap
+to produce. GitHub's hosted runners are amd64, so an arm64 build runs every
+`RUN` step — here an apt-heavy ROS install — under **QEMU emulation**. That is
+the most expensive thing this repo does, and on 2026-08-26 it exhausted the
+organisation's Actions minutes, after which no workflow in either repo started
+at all.
+
+The two consumers are not equally urgent either:
+
+| | Who pulls it | How urgently fresh |
+|---|---|---|
+| **amd64** | the Husky (x86_64), which builds its `lite` image `FROM` this one | must be current |
+| **arm64** | the Mac | convenience only |
+
+The robot has no other way to get a base. The Mac does: the documented path
+there builds this image **locally and natively** (see *Rebuild* above), which
+costs no Actions minutes at all.
+
+So a push to `main` rebuilds **amd64 only**, natively. **Both** architectures
+are built on a version tag (`v*`) and on a manual run — when somebody
+publishes, not on every commit.
+
+An amd64-only run does **not** overwrite `:jazzy` with a single-architecture
+manifest. It recombines the fresh amd64 with the arm64 already published, so a
+Mac that does pull the tag gets a possibly older arm64 rather than
+`no matching manifest for linux/arm64` — dropping it would collide with the
+workspace rule *no `platform: linux/amd64`, no Rosetta*. If no arm64 can be
+found under `:jazzy`, the tag is not moved at all and the run fails loudly.
+
+**To publish a fresh arm64:** push a `v*` tag, or run the workflow manually
+from the Actions tab.
 
 ## Running Tests
 

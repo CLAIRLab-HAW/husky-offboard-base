@@ -2,22 +2,46 @@ name: build-and-push-base
 
 # Builds the husky-offboard-base image and pushes it to GHCR so that every final image can cache it via
 #   FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy
-# (one base build, reused everywhere). Triggered on push to main and manually.
+# (one base build, reused everywhere).
 #
-# Multi-arch (amd64 + arm64) is not a nicety here: the Mac pulls arm64 natively and the Husky robot (x86_64) pulls
-# amd64 for the `lite` stage that runs ON it. arm64 is built under QEMU emulation -- slower, but the base builds
-# rarely.
-
-# NO `paths:` filter here, deliberately. A workflow-level filter that does not match produces NO RUN AT ALL -- the
-# Actions tab then looks the same whether the filter did its job or the push never reached Actions. Measured
-# 2026-08-26: a push touching Dockerfile, scripts/ros-env, scripts/clearlog and this file started nothing here,
-# while the sibling repo, whose workflow has no filter, ran on the very same push. The filter now sits on the
-# expensive job instead (see `scope` below): every push starts a visible run, and the log names the files that
-# decided whether the image is rebuilt.
+# WHICH ARCHITECTURES, AND WHY NOT ALWAYS BOTH
+#
+# The two consumers are not equally urgent:
+#
+#   amd64   the Husky (x86_64) builds its `lite` image FROM the GHCR base. It has no other way to get one, so
+#           this architecture has to be current.
+#   arm64   the Mac. But the documented path there builds the base LOCALLY and natively --
+#           `BASE_IMAGE=husky-offboard-base:jazzy docker compose --profile mock build` (CLAUDE.md, README) --
+#           so the published arm64 is a convenience for a fresh machine that does not override BASE_IMAGE.
+#
+# arm64 cannot be built natively on a GitHub-hosted amd64 runner: every RUN step of the arm64 pass executes real
+# arm64 binaries, here an apt-heavy ROS install, so buildx runs them under QEMU emulation. That is by far the
+# most expensive thing this repo does -- and on 2026-08-26 it is what exhausted the org's Actions minutes, after
+# which NO workflow in either repo started any more.
+#
+# Hence: a push to main rebuilds amd64 only, natively. Both architectures are built on a version tag and on a
+# manual run -- i.e. when somebody publishes, not on every commit.
+#
+# The rolling `jazzy` tag stays multi-arch either way. An amd64-only run does NOT overwrite it with a
+# single-architecture manifest: it recombines the fresh amd64 with the arm64 already published, so a Mac that
+# does pull it gets a possibly older arm64 rather than `no matching manifest for linux/arm64`. Dropping arm64
+# there would collide head-on with the workspace rule "no platform: linux/amd64, no Rosetta".
+#
+# NO `paths:` filter here, deliberately. A workflow-level filter that does not match produces NO RUN AT ALL --
+# the Actions tab then looks the same whether the filter did its job or the push never reached Actions. The
+# filter sits on the expensive job instead (see `scope`): every push starts a visible run, and the log names the
+# files that decided what is rebuilt.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
+
+# A second push while the first is still building pays for both otherwise -- and minutes are the binding
+# constraint here. Version tags are exempt: those runs publish, and cancelling one would leave a tag half done.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   IMAGE: ghcr.io/clairlab-haw/husky-offboard-base
@@ -32,6 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rebuild: ${{ steps.scope.outputs.rebuild }}
+      platforms: ${{ steps.scope.outputs.platforms }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -80,38 +105,49 @@ jobs:
           -m 'not offboard_e2e'
           -o 'markers=offboard_e2e: needs built images and a running docker'
 
-      # Which files decided the build, stated in the log rather than swallowed by a filter. `gh api` is on every
-      # runner and GITHUB_TOKEN may read THIS repo, so no extra action and no extra token. Anything that is not a
-      # plain push (a manual dispatch, a new branch with no previous SHA) rebuilds -- if somebody pressed the
-      # button, they want the image.
-      - name: Decide whether the image has to be rebuilt
+      # What gets rebuilt, and for which architectures -- decided in ONE place and written into the log rather
+      # than hidden in a filter. `gh api` is on every runner and GITHUB_TOKEN may read THIS repo, so this needs
+      # neither an extra action nor an extra token.
+      - name: Decide what to rebuild
         id: scope
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" != "push" ] || [ -z "${BEFORE:-}" ] \
-             || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
-              echo "rebuild=true" >> "$GITHUB_OUTPUT"
-              echo "::notice::${{ github.event_name }} without a comparable previous commit -- rebuilding."
+          both="linux/amd64,linux/arm64"
+
+          # A tag or a manual run means somebody is publishing: build both architectures, no questions asked.
+          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref_type }}" = "tag" ]; then
+              { echo "rebuild=true"; echo "platforms=$both"; } >> "$GITHUB_OUTPUT"
+              echo "::notice::${{ github.event_name }} on ${{ github.ref }} -- building $both."
               exit 0
           fi
+
+          # A branch push with no comparable previous commit (a fresh branch) cannot be narrowed down.
+          if [ -z "${BEFORE:-}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+              { echo "rebuild=true"; echo "platforms=linux/amd64"; } >> "$GITHUB_OUTPUT"
+              echo "::notice::no comparable previous commit -- building linux/amd64."
+              exit 0
+          fi
+
           changed="$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}" \
                      --paginate --jq '.files[].filename')"
           echo "changed in this push:"; echo "$changed" | sed 's/^/  /'
+
           # The compare endpoint caps its file list at 300. A capped list could hide an image-relevant file, and
           # a missed rebuild is exactly the silent failure this step exists to prevent -- so at the cap, rebuild.
           if [ "$(echo "$changed" | grep -c .)" -ge 300 ]; then
-              echo "rebuild=true" >> "$GITHUB_OUTPUT"
+              { echo "rebuild=true"; echo "platforms=linux/amd64"; } >> "$GITHUB_OUTPUT"
               echo "::notice::the compare list hit the 300-file cap -- rebuilding rather than guessing."
               exit 0
           fi
+
           if echo "$changed" | grep -qE '^(Dockerfile|scripts/|\.github/workflows/build\.yml$)'; then
-              echo "rebuild=true" >> "$GITHUB_OUTPUT"
-              echo "::notice::image-relevant files changed -- rebuilding."
+              { echo "rebuild=true"; echo "platforms=linux/amd64"; } >> "$GITHUB_OUTPUT"
+              echo "::notice::image-relevant files changed -- building linux/amd64 (arm64 on a tag or a manual run)."
           else
-              echo "rebuild=false" >> "$GITHUB_OUTPUT"
+              { echo "rebuild=false"; echo "platforms="; } >> "$GITHUB_OUTPUT"
               echo "::notice::nothing under Dockerfile, scripts/ or this workflow changed -- skipping the build."
           fi
 
@@ -125,7 +161,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Only when arm64 is actually in scope: registering the binfmt handlers is cheap, but everything that runs
+      # under them is not, and a push to main does not build arm64 (see the header).
       - name: Set up QEMU (for linux/arm64 via emulation)
+        if: contains(needs.test.outputs.platforms, 'arm64')
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
@@ -138,22 +177,52 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Docker meta (rolling + date-sha tag)
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=jazzy
-            type=raw,value={{date 'YYYYMMDD'}}-{{sha}}
-
+      # Pushed under an immutable per-commit tag ONLY. The rolling tags are moved in the next step, once there is
+      # something to move them to -- so a failed build never leaves `jazzy` pointing at a half-published image.
+      #
+      # provenance: false -- a single-platform build would otherwise carry an attestation manifest, which the tag
+      # recombination below would have to carry along. This is an internal base image; the SLSA attestation is
+      # not worth the extra moving part.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ needs.test.outputs.platforms }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          provenance: false
+          tags: ${{ env.IMAGE }}:sha-${{ github.sha }}
           # Registry layer cache -> a CI rebuild reuses the slow layers
           cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
+
+      # `jazzy` stays multi-arch even when this run built amd64 alone: the fresh amd64 is combined with the arm64
+      # that is already published, so the Mac gets an older arm64 rather than `no matching manifest for
+      # linux/arm64`. If no arm64 can be found under `jazzy`, the tag is NOT moved -- the previous, complete one
+      # stays valid and the run fails loudly instead of quietly halving the image.
+      - name: Move the rolling tags
+        env:
+          PLATFORMS: ${{ needs.test.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          built="${IMAGE}:sha-${GITHUB_SHA}"
+          dated="${IMAGE}:$(date -u +%Y%m%d)-${GITHUB_SHA:0:7}"
+
+          if [ "$PLATFORMS" = "linux/amd64" ]; then
+              arm64="$(docker buildx imagetools inspect "${IMAGE}:jazzy" --raw \
+                       | jq -r '.manifests[]? | select(.platform.os=="linux" and .platform.architecture=="arm64") | .digest' \
+                       | head -n1)"
+              if [ -z "$arm64" ]; then
+                  echo "::error::no arm64 manifest under ${IMAGE}:jazzy, so an amd64-only run cannot keep the tag"
+                  echo "::error::multi-arch. The rolling tag was NOT moved. Run this workflow manually"
+                  echo "::error::(workflow_dispatch) or push a version tag to build both architectures."
+                  exit 1
+              fi
+              echo "combining the fresh amd64 with the published arm64 ($arm64)"
+              docker buildx imagetools create -t "${IMAGE}:jazzy" -t "$dated" "$built" "${IMAGE}@${arm64}"
+          else
+              docker buildx imagetools create -t "${IMAGE}:jazzy" -t "$dated" "$built"
+          fi
+
+          echo "--- ${IMAGE}:jazzy now holds ---"
+          docker buildx imagetools inspect "${IMAGE}:jazzy"

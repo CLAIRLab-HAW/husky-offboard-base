@@ -5,6 +5,29 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (arm64 under QEMU on every push ate the Actions budget)
+
+- **A push to `main` rebuilds amd64 only; both architectures are built on a `v*` tag and on a manual run.**
+  GitHub's hosted runners are amd64, so an arm64 build runs every `RUN` step -- an apt-heavy ROS install here --
+  under QEMU emulation. It is the most expensive thing this repo does, and on 2026-08-26 it exhausted the
+  organisation's Actions minutes, after which NO workflow in either repo started any more.
+- **The two consumers are not equally urgent**, which is what makes the split safe: the Husky builds its `lite`
+  image `FROM` the published amd64 and has no other way to get one, while the documented path on the Mac builds
+  this image locally and natively (`BASE_IMAGE=husky-offboard-base:jazzy docker compose build`) and never touches
+  GHCR.
+- **`:jazzy` stays multi-arch regardless.** An amd64-only run pushes to an immutable `sha-<commit>` tag first and
+  then recombines that fresh amd64 with the arm64 already published, so a Mac that does pull the tag gets an
+  older arm64 instead of `no matching manifest for linux/arm64` -- which would collide head-on with the workspace
+  rule "no `platform: linux/amd64`, no Rosetta". Finding no arm64 there is a hard error and the tag is not moved:
+  the previous, complete one stays valid.
+- **QEMU is only set up when arm64 is actually in scope**, and `concurrency` cancels a superseded run -- except on
+  a version tag, where cancelling would leave a publish half done.
+- **`docker/metadata-action` is gone.** The rolling tags are moved by `docker buildx imagetools create` after a
+  successful build, so a failed build can no longer leave `jazzy` pointing at a half-published image.
+- The five `scope` cases and the three tag-recombination cases were exercised offline against stubbed `gh` and
+  `docker` before this was committed -- including that the `unknown/unknown` attestation entry is not mistaken
+  for the arm64 manifest.
+
 ## 2026-08-26 (a push to main started no run at all, and the gate skipped itself)
 
 - **The `paths:` filter is gone from the trigger.** A workflow-level filter that does not match produces NO RUN
