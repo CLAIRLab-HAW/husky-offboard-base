@@ -1,30 +1,26 @@
-# clearlog -- die Shell-Fassung der Konsolenausgabe aus libs/clearlog.
+# clearlog -- the shell half of the console output from libs/clearlog.
 #
-# Nicht ausfuehren, sondern sourcen:
+# Do not execute it, source it:
 #
 #     . /usr/local/bin/clearlog
 #     clearlog_name offboard.entry
-#     log_info "robot.yaml geladen -> %s" "$dest"
+#     log_info "robot.yaml loaded -> %s" "$dest"
 #
-# Erzeugt dieselbe Zeile wie ClearlogHandler: am Terminal Symbole und Farbe,
-# ohne Terminal Level als Wort und volles Datum -- damit
-# `docker logs | grep WARN` traegt.  Beide Fassungen sind per Golden-Test
-# aneinandergebunden: libs/clearlog/tests/test_shell_parity.py.
+# Produces the same line as ClearlogHandler: symbols and colour on a terminal, the level as a word and a full
+# date without one -- so that `docker logs | grep WARN` carries. The two halves are tied together by a golden
+# test: libs/clearlog/tests/test_shell_parity.py.
 #
-# Vorlage plus Argumente, nicht "...$var..." -- dieselbe Regel wie in Python.
+# Template plus arguments, not "...$var..." -- the same rule as in Python.
 #
-# CLEARLOG_LEVEL wird nur im ROOT-Anteil ausgewertet (der Eintrag ohne '=').
-# 'warning,twinlink.mcap=debug' wirkt hier wie 'warning'; die Zuweisungen pro
-# Logger bleiben Python-Sache.
+# CLEARLOG_LEVEL is read for its ROOT part only (the entry without '='). 'warning,twinlink.mcap=debug' acts here
+# like 'warning'; the per-logger assignments stay a Python matter.
 #
-# JEDE Funktion gibt 0 zurueck.  Die Skripte hier laufen teils unter `set -e`,
-# und ein Rueckgabewert != 0 wuerde sie mitten im Setup toeten.  Ausserdem
-# laufen sie unter `set -u`: kein Zugriff auf ungesetzte Variablen.
+# EVERY function returns 0. Some of the scripts here run under `set -e`, and a non-zero return value would kill
+# them in the middle of their setup. They also run under `set -u`: no reading of unset variables.
 #
-# Laeuft unter POSIX-sh (dash) genauso wie unter bash -- netbird-entrypoint-
-# override.sh (#!/bin/sh) sourct sie produktiv, auch unter set -eu. Einzige
-# echte Anforderung: GNU date fuer die Millisekunden; fehlt %3N, entfaellt
-# die Nachkommastelle, ohne dass die Spalte springt.
+# Runs under POSIX sh (dash) exactly as under bash -- netbird-entrypoint-override.sh (#!/bin/sh) sources it in
+# production, under set -eu as well. The one real requirement is GNU date for the milliseconds; without %3N the
+# fractional digit is dropped, without the column shifting.
 
 CLEARLOG_NAME="${CLEARLOG_NAME:-shell}"
 
@@ -109,21 +105,18 @@ _cl_emit() {
     shift || true
     local msg stamp
     if [ "$#" -gt 0 ]; then
-        # shellcheck disable=SC2059 -- Vorlage + Argumente ist genau die Absicht.
+        # shellcheck disable=SC2059 -- template + arguments is precisely the intent.
         msg="$(printf "$fmt" "$@" 2>/dev/null)" || msg="$fmt"
     else
-        # Wie logging.LogRecord.getMessage(): ohne Argumente bleibt die
-        # Meldung unangetastet -- sonst zerstoert ein literales '%' sie
-        # lautlos (printf liest z.B. "% g" aus "20% geladen" als Konversion).
+        # Like logging.LogRecord.getMessage(): without arguments the message stays untouched -- otherwise a
+        # literal '%' destroys it silently (printf reads "% l" out of "20% loaded" as a conversion).
         msg="$fmt"
     fi
     stamp="$(_cl_stamp)"
     if [ "$_cl_tty" = 1 ]; then
-        # Harter Schnitt (%-20.20s) statt Pythons Mitte-Ellipsis aus
-        # handler.py:shorten() -- bewusst akzeptierter Unterschied, kein
-        # Versehen.  Die Namenskonvention (<paket>.<bereich>, hoechstens
-        # 20 Zeichen) deckelt Namen bei genau NAME_WIDTH, dieser Fall tritt
-        # also praktisch nie ein.
+        # A hard cut (%-20.20s) rather than Python's middle ellipsis from handler.py:shorten() -- a difference
+        # accepted on purpose, not an oversight. The naming convention (<package>.<area>, at most 20 characters)
+        # caps names at exactly NAME_WIDTH, so this case practically never arises.
         printf '\033[90m%s\033[0m %b%s\033[0m \033[90m%-20.20s\033[0m  %s\n' \
                "$stamp" "$col" "$sym" "$CLEARLOG_NAME" "$msg" >&2
     else
@@ -146,8 +139,8 @@ log_phase() {
         # shellcheck disable=SC2059
         title="$(printf "$fmt" "$@" 2>/dev/null)" || title="$fmt"
     else
-        # Wie in _cl_emit: ohne Argumente nicht formatieren, sonst zerstoert
-        # ein literales '%' ("Setup zu 50% abgeschlossen") den Titel lautlos.
+        # As in _cl_emit: without arguments do not format, or a literal '%' ("setup 50% done") destroys the
+        # title silently.
         title="$fmt"
     fi
     if [ "$_cl_tty" = 1 ]; then

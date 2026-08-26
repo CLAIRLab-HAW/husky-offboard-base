@@ -5,6 +5,15 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (clearlog's own comments were still German)
+
+- **`scripts/clearlog` reads English.** Its header block and the four comments inside it explained the printf
+  template rule, the `set -e`/`set -u` constraints, the POSIX-sh requirement and the deliberate difference from
+  `handler.py:shorten()` -- in German, with transliterated umlauts. It is the file every entrypoint and helper
+  sources, so it is read more often than most.
+- **Prose only.** `libs/clearlog/tests/test_shell_parity.py` reads exactly this file and ties it to the Python
+  handler; 100 tests pass unchanged.
+
 ## 2026-08-26 (the push had no gate in front of it)
 
 - **`build-and-push` now `needs: test`.** Until today a push to `main` built this image and published it to GHCR
