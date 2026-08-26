@@ -5,6 +5,25 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (a push to main started no run at all, and the gate skipped itself)
+
+- **The `paths:` filter is gone from the trigger.** A workflow-level filter that does not match produces NO RUN
+  AT ALL, and the Actions tab then looks the same whether the filter did its job or the push never reached
+  Actions. Measured 2026-08-26: a push touching `Dockerfile`, `scripts/ros-env`, `scripts/clearlog` and this
+  workflow started nothing here, while `husky-offboard`, whose workflow carries no filter, ran on the very same
+  push. Every push to `main` now starts a visible run.
+- **The saving moved to the expensive job.** A `scope` step compares the push through `gh api` and names the
+  changed files in the log; `build-and-push` runs only when `Dockerfile`, `scripts/` or this workflow is among
+  them. Anything that is not a plain push rebuilds, and so does a compare list that hits the API's 300-file cap
+  -- a missed rebuild is the failure this step exists to prevent.
+- **The neighbour is checked out with `CLAIRLAB_READ_TOKEN`**, the org secret `robot-contract`, `perception`,
+  `plan-bridge`, `skill-tree` and `husky-sdk` already use for their private siblings. `GITHUB_TOKEN` is scoped
+  to the repository the workflow runs in, so against another private repo of the same org the API answers "Not
+  Found" rather than 403 -- measured here as three attempts, ~35 s of backoff, then `Error: Not Found`.
+- **The checkout is required, not optional.** It was briefly written with `continue-on-error` and skip
+  conditions, which meant the behavioural half of the gate silently did not run. A gate that skips itself is not
+  a gate; no other repo in the org writes it that way either.
+
 ## 2026-08-26 (clearlog's own comments were still German)
 
 - **`scripts/clearlog` reads English.** Its header block and the four comments inside it explained the printf

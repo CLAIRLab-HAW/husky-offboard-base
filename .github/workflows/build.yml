@@ -8,13 +8,15 @@ name: build-and-push-base
 # amd64 for the `lite` stage that runs ON it. arm64 is built under QEMU emulation -- slower, but the base builds
 # rarely.
 
+# NO `paths:` filter here, deliberately. A workflow-level filter that does not match produces NO RUN AT ALL -- the
+# Actions tab then looks the same whether the filter did its job or the push never reached Actions. Measured
+# 2026-08-26: a push touching Dockerfile, scripts/ros-env, scripts/clearlog and this file started nothing here,
+# while the sibling repo, whose workflow has no filter, ran on the very same push. The filter now sits on the
+# expensive job instead (see `scope` below): every push starts a visible run, and the log names the files that
+# decided whether the image is rebuilt.
 on:
   push:
     branches: [main]
-    paths:
-      - Dockerfile
-      - scripts/**
-      - .github/workflows/build.yml
   workflow_dispatch:
 
 env:
@@ -24,11 +26,12 @@ jobs:
   # The gate in front of the push. Until 2026-08-26 there was none: this repo published an image on every push to
   # main while the tests that check its three scripts sat in husky-offboard, which had no workflow at all.
   #
-  # The floor -- `bash -n` on the scripts -- always runs. The behavioural checks live in the neighbouring repo by
-  # design (they compare a script against the Dockerfiles that copy it), so they run when that repo can be checked
-  # out and are reported as unavailable when it cannot; they never turn a token problem into a failed build.
+  # Two halves: `bash -n` over the scripts, and the behavioural checks, which live in the neighbouring repo by
+  # design -- they compare a script against the Dockerfiles that copy it, so they cannot be written here.
   test:
     runs-on: ubuntu-latest
+    outputs:
+      rebuild: ${{ steps.scope.outputs.rebuild }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -43,41 +46,78 @@ jobs:
               bash -n "$f"
           done
 
-      # tests/siblings.py in husky-offboard looks for this repo at deploy/husky-offboard-base -- the layout below
-      # is what makes the cross-repo checks find it.
-      - name: Check out husky-offboard beside it
-        id: sibling
-        continue-on-error: true
-        uses: actions/checkout@v5
+      # tests/siblings.py in husky-offboard looks for this repo at deploy/husky-offboard-base, so the two paths
+      # here are what makes the cross-repo checks find each other.
+      #
+      # CLAIRLAB_READ_TOKEN, not GITHUB_TOKEN: the default token is scoped to the repository the workflow runs in,
+      # so against another PRIVATE repo of the same org the API answers "Not Found" rather than 403 -- it does not
+      # confirm the repo exists. Measured 2026-08-26 in this workflow: three attempts, ~35 s of backoff, then
+      # `Error: Not Found`. The org secret is the same one robot-contract, perception, plan-bridge, skill-tree and
+      # husky-sdk use for their private siblings, and as there the checkout is required rather than optional: a
+      # gate that quietly skips itself is not a gate.
+      - uses: actions/checkout@v5
         with:
           repository: CLAIRLab-HAW/husky-offboard
           path: deploy/husky-offboard
+          token: ${{ secrets.CLAIRLAB_READ_TOKEN }}
 
       - uses: actions/setup-python@v5
-        if: steps.sibling.outcome == 'success'
         with:
           python-version: "3.11"
 
+      # No pyproject.toml in husky-offboard, deliberately (CLAUDE.md: uv would take that repo for the workspace
+      # root and run against the system interpreter), so the two dependencies are named rather than resolved.
       - name: Install the test dependencies
-        if: steps.sibling.outcome == 'success'
         run: pip install pytest pyyaml
 
+      # offboard_e2e is deselected rather than left to skip itself: it wants images no runner builds, and a dozen
+      # skips in the log read like something went wrong. The marker is registered on the command line because
+      # without a config file pytest would warn about it on every run.
       - name: Run the neighbouring suite against this working tree
-        if: steps.sibling.outcome == 'success'
         working-directory: deploy/husky-offboard
         run: >
           python -m pytest tests -q
           -m 'not offboard_e2e'
           -o 'markers=offboard_e2e: needs built images and a running docker'
 
-      - name: Say so when the neighbour was unreachable
-        if: steps.sibling.outcome != 'success'
+      # Which files decided the build, stated in the log rather than swallowed by a filter. `gh api` is on every
+      # runner and GITHUB_TOKEN may read THIS repo, so no extra action and no extra token. Anything that is not a
+      # plain push (a manual dispatch, a new branch with no previous SHA) rebuilds -- if somebody pressed the
+      # button, they want the image.
+      - name: Decide whether the image has to be rebuilt
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          echo "::warning::husky-offboard could not be checked out; only the shell syntax check gated this build."
-          echo "If the repo is private, give this workflow a PAT with read access instead of GITHUB_TOKEN."
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "push" ] || [ -z "${BEFORE:-}" ] \
+             || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+              echo "rebuild=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::${{ github.event_name }} without a comparable previous commit -- rebuilding."
+              exit 0
+          fi
+          changed="$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}" \
+                     --paginate --jq '.files[].filename')"
+          echo "changed in this push:"; echo "$changed" | sed 's/^/  /'
+          # The compare endpoint caps its file list at 300. A capped list could hide an image-relevant file, and
+          # a missed rebuild is exactly the silent failure this step exists to prevent -- so at the cap, rebuild.
+          if [ "$(echo "$changed" | grep -c .)" -ge 300 ]; then
+              echo "rebuild=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::the compare list hit the 300-file cap -- rebuilding rather than guessing."
+              exit 0
+          fi
+          if echo "$changed" | grep -qE '^(Dockerfile|scripts/|\.github/workflows/build\.yml$)'; then
+              echo "rebuild=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::image-relevant files changed -- rebuilding."
+          else
+              echo "rebuild=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::nothing under Dockerfile, scripts/ or this workflow changed -- skipping the build."
+          fi
 
   build-and-push:
     needs: test
+    if: needs.test.outputs.rebuild == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
