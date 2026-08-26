@@ -5,6 +5,18 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (ros-env moved here, so every image can have the same one)
+
+- **`ros-env` — THE one ROS source chain — now lives in this repo and this image**, next to `zenoh-connect`,
+  `ready-banner` and `clearlog`, and for the same reason: every image that runs a ROS tool needs it. It lands on
+  `/usr/local/bin/ros-env`, so the four husky-offboard images inherit it instead of copying it, and
+  `deploy/app-runner` can take it through the build context the way it already takes `zenoh-connect`.
+- **The file is unchanged.** Its up to three overlay stages are each guarded with `[ -f … ]`, which is exactly
+  what makes one file correct in an image that has only `/opt/ros/jazzy/setup.bash` and in one that also has
+  `clearpath_ws` and the rg6 overlay.
+- **Order matters for whoever builds next**: this image has to be rebuilt and pushed before husky-offboard is
+  built against it, because husky-offboard no longer copies `ros-env` from its own `scripts/`.
+
 ## 2026-08-26 (.DS_Store was not ignored)
 
 - **`.gitignore` listed only `.env`.** macOS writes a `.DS_Store` into any directory a Finder window has

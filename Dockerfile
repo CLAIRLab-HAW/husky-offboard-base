@@ -92,10 +92,17 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-${TARGETARCH}
 # ready-banner derives an entrypoint's "ready. Tools: ..." line from what is actually on /usr/local/bin. It is
 # here rather than in a final because ALL four entrypoints print that line, and a hand-kept list per entrypoint
 # is how one of them ended up advertising a tool that had moved to another image.
+#
+# ros-env is THE one ROS source chain, for the same reason: every image that runs a ROS tool needs it, and each
+# of its up to three overlays is guarded with `[ -f ... ]`, so the same file is correct where only the first
+# stage exists (this image, spact-logic, deploy/app-runner) and where all three do (clearpath-offboard,
+# clearpath-mock-robot).  A fresh `docker exec` shell has no ROS sourced, and a helper that skips the chain
+# fails silently rather than loudly -- which is why it may not have a second version anywhere.
 COPY scripts/zenoh-connect /usr/local/bin/zenoh-connect
 COPY scripts/ready-banner /usr/local/bin/ready-banner
 COPY scripts/clearlog /usr/local/bin/clearlog
-RUN chmod +x /usr/local/bin/zenoh-connect /usr/local/bin/ready-banner
+COPY scripts/ros-env /usr/local/bin/ros-env
+RUN chmod +x /usr/local/bin/zenoh-connect /usr/local/bin/ready-banner /usr/local/bin/ros-env
 # clearlog is sourced, not executed -> deliberately no chmod +x, so nobody gets the idea to run it.
 #
 # It is also the ONE file on /usr/local/bin that keeps a suffix, and that is a decision rather than an oversight:

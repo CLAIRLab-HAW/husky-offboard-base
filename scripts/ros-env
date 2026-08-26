@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ros-env — THE one source chain of the offboard containers.  It is SOURCED, not executed:
+#
+#     source ros-env
+#
+# Why a file of its own: without it every helper carries its own copy of these five lines, and copies drift.  The
+# drift is not harmless -- a helper that misses the rg6 overlay dies on robot.urdf.xacro's `$(find
+# rg6_description)` with
+#
+#     XacroException: package 'rg6_description' not found
+#
+# which looks like a broken image and is not one, and a helper that misses clearpath_ws or /clearpath/setup.bash
+# fails by producing NOTHING rather than by erroring.  A table in CLAUDE.md listing who sources what is not a
+# mechanism: it stops being true the moment someone adds a helper without reading it.
+#
+# Pinned down by tests/test_ros_env_single_source.py.
+
+# The ROS setup scripts do not tolerate nounset (they reference AMENT_TRACE_SETUP_FILES and others unset) -> set +u
+# while sourcing.  The CALLER's option is restored afterwards rather than set unconditionally: `view-moveit`,
+# `view-nav` and `nav` run under `set -uo pipefail`/`set -euo pipefail`, the others do not.
+_ros_env_flags="$-"
+set +u
+
+# 1) ROS 2 Jazzy.
+source /opt/ros/jazzy/setup.bash
+
+# 2) clearpath_ws — clearpath_generator_robot, sensors, hardware.
+[ -f /opt/clearpath_ws/install/setup.bash ] && source /opt/clearpath_ws/install/setup.bash
+
+# 3) The environment generated from robot.yaml (only present once the entrypoint has generated it).  It sets
+#    RMW_IMPLEMENTATION=rmw_zenoh_cpp from robot.yaml's system.middleware, which is what every profile wants --
+#    robot.yaml stays the single source of truth for the middleware and this chain does not argue with it.
+[ -f /clearpath/setup.bash ] && source /clearpath/setup.bash
+
+# 4) rg6 — rg6_description (gripper meshes for package://rg6_description), rg6_control, rg6_msgs.  DELIBERATELY
+#    after /clearpath/setup.bash: that file is generated, and an overlay placed before it would be dropped if it
+#    ever set AMENT_PREFIX_PATH instead of extending it.
+[ -f /opt/onrobot-rg6/install/setup.bash ] && source /opt/onrobot-rg6/install/setup.bash
+
+case "${_ros_env_flags}" in *u*) set -u ;; *) set +u ;; esac
+unset _ros_env_flags

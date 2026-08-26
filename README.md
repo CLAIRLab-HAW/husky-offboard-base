@@ -13,6 +13,9 @@ reused everywhere.
   distributed via GHCR so the finals cache against it.
 - **The one Zenoh router logic** (`zenoh-connect`) instead of a copy per
   final.
+- **The one ROS source chain** (`ros-env`) instead of a copy per helper: each
+  of its up to three overlays is guarded, so the same file is right in an
+  image that has only `/opt/ros/jazzy` and in one that has all three.
 - **`rmw_zenoh_cpp` — the middleware the robot speaks, and the only one we
   speak.** The image ships the package its own `RMW_IMPLEMENTATION` default
   names, so a bare `docker run` of this image works.
@@ -52,6 +55,14 @@ belongs to a stage, not here.
 - `/usr/local/bin/clearlog` — the shell half of `clearlog`, sourced (not
   executed) by every entrypoint and helper so container lines and Python lines
   share one format
+- `/usr/local/bin/ros-env` — **THE one ROS source chain**, sourced by every
+  helper and entrypoint that needs ROS. A fresh `docker exec` shell has none
+  sourced, and a helper that skips the chain fails *silently* — it prints
+  nothing rather than an error. Each overlay stage is guarded with `[ -f … ]`,
+  so this one file is correct in an image carrying only `/opt/ros/jazzy` and in
+  one carrying `clearpath_ws` and the rg6 overlay as well. The
+  [app-runner](../app-runner/README.md) copies it via the build context, like
+  `zenoh-connect`.
 - ENV defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
   `CLEARPATH_NS=a200_0553`, `RCUTILS_CONSOLE_OUTPUT_FORMAT`;
   `CMD sleep infinity`
