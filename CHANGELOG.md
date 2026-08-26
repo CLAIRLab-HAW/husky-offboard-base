@@ -5,6 +5,12 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (.DS_Store was not ignored)
+
+- **`.gitignore` listed only `.env`.** macOS writes a `.DS_Store` into any directory a Finder window has
+  visited, and this repo is developed on one. Added, matching the workspace base list (CLAUDE.md). The
+  remaining six entries of that list stay out: this repo carries no Python at all.
+
 ## 2026-08-26 (the downloaded .debs survive in a build cache)
 
 - **`docker-clean` is removed and `Keep-Downloaded-Packages` set**, so the apt cache mounts in this image and in
