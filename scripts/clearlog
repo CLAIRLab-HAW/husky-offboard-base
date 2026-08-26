@@ -1,8 +1,8 @@
-# clearlog.sh -- die Shell-Fassung der Konsolenausgabe aus libs/clearlog.
+# clearlog -- die Shell-Fassung der Konsolenausgabe aus libs/clearlog.
 #
 # Nicht ausfuehren, sondern sourcen:
 #
-#     . /usr/local/bin/clearlog.sh
+#     . /usr/local/bin/clearlog
 #     clearlog_name offboard.entry
 #     log_info "robot.yaml geladen -> %s" "$dest"
 #

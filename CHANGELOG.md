@@ -5,6 +5,36 @@ What changed when. The current state is described in the [README](README.md).
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung [Semantic Versioning](https://semver.org/lang/de/).
 
+## 2026-08-26 (clearlog.sh is clearlog, and the last dead fallback is gone)
+
+- **`clearlog.sh` is `clearlog`.** The suffix was kept one round longer on the argument that it distinguishes the
+  shell half from the Python package `libs/clearlog` -- overruled: nothing on `/usr/local/bin` carries an
+  extension, the two halves never appear in the same place, and `libs/clearlog/tests/test_shell_parity.py`
+  reaches for the file by path anyway. Checked before renaming: `libs/clearlog` declares no `[project.scripts]`,
+  so there is no command of that name to collide with.
+- **`zenoh-connect` sources clearlog strictly**, like every other script. Its eleven-line fallback could not fire:
+  clearlog ships in this image beside it.
+
+## 2026-08-26 (a derived ready banner for every entrypoint)
+
+- **New `scripts/ready-banner`.** It prints the tools a container actually carries -- every plain file directly on
+  `/usr/local/bin` that starts with a shebang, minus the cross-cutting pieces that are sourced or invoked by the
+  entrypoint rather than by a user (`ros-env`, `guard`, `clearlog.sh`, `zenoh-connect`, `start-desktop`, itself).
+  It belongs here because ALL four entrypoints print that line; keeping the list per entrypoint is how one of them
+  ended up advertising `foxglove` long after that bridge had moved to another image. `deploy/app-runner` copies it
+  through the same build context it already uses for `zenoh-connect`.
+
+## 2026-08-26 (a command on PATH does not carry a file extension)
+
+- **`zenoh-connect.sh` is `zenoh-connect`.** Of the fourteen files on `/usr/local/bin` in the mock-robot image,
+  ten carry no extension -- `view-moveit`, `teach-pose`, `ros-env`, `guard`, `mock`, `moveit`, `nav`, `rviz`,
+  `view-nav`, `foxglove` -- and everything husky-offboard added itself went without one. The three `.sh` files
+  all came from this repo, which made the suffix look like a convention when it was a leftover. It did not even
+  mark "sourced" consistently: `ros-env` and `guard` are sourced too and have none.
+- **`clearlog.sh` keeps its suffix, and now says why.** `clearlog` is the name of a Python package in this
+  workspace (`libs/clearlog`) and this file is its shell half; the suffix says which one you are looking at. It
+  is also the one file there that is sourced and deliberately not executable.
+
 ## 2026-08-26 (the base carries only what every image needs)
 
 - **The image named an RMW it did not ship.** `ENV RMW_IMPLEMENTATION=rmw_zenoh_cpp` had been the default since

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# zenoh-connect.sh <role> — THE one zenoh router logic for every container in deploy/.
+# zenoh-connect <role> — THE one zenoh router logic for every container in deploy/.
 #
 # Every container speaks zenoh, mock included, so this file does not decide WHETHER there is a router but WHICH
 # graph it joins:
@@ -26,19 +26,12 @@
 # Sourced OR executed (starts the router as a background process; log: /tmp/zenohd.log). ROS must already be
 # sourced (ros2 CLI).
 
-if [ -r /usr/local/bin/clearlog.sh ]; then
-    . /usr/local/bin/clearlog.sh
-else
-    log_debug() { :; }
-    # shellcheck disable=SC2059
-    log_info()  { if [ "$#" -gt 1 ]; then printf "$@" >&2; else printf '%s' "${1:-}" >&2; fi; echo >&2; }
-    log_warn()  { log_info "$@"; }
-    log_error() { log_info "$@"; }
-    log_phase() { log_info "$@"; }
-    clearlog_name() { :; }
-fi
+# clearlog ships in the base image beside this file, so it is present wherever this one is. Sourced strictly
+# rather than behind a fallback: a missing clearlog means a broken image, and stub log functions would hide that
+# behind output that looks almost right.
+. /usr/local/bin/clearlog
 # The role of the calling container, in the NAME column rather than in front of
-# every message -- see the same block in start-desktop.sh. The default keeps
+# every message -- see the same block in start-desktop. The default keeps
 # the previous name for a caller that passes nothing.
 _prefix="${1:-base}"
 clearlog_name "${_prefix}.zenoh"

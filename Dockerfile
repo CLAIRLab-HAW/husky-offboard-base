@@ -5,13 +5,13 @@
 #
 #   - rmw_zenoh_cpp, the middleware the robot speaks -- and the only one anything here speaks
 #   - python3-rich, the renderer behind libs/clearlog's Python handler
-#   - the shared shell helpers: clearlog.sh, zenoh-connect.sh
+#   - the shared shell helpers: clearlog, zenoh-connect
 #   - the shared ENV defaults (RMW, DOMAIN_ID, namespace, rcutils line format)
 #
 # Everything else lives in the `viewer` stage of deploy/husky-offboard/Dockerfile, where lite, offboard and
 # mock-robot all inherit it -- still one place to change, one level further down:
 #
-#   noVNC desktop     Xvfb, x11vnc, novnc, websockify, fluxbox, xterm, Mesa, start-desktop.sh.  446 MB with its
+#   noVNC desktop     Xvfb, x11vnc, novnc, websockify, fluxbox, xterm, Mesa, start-desktop.  446 MB with its
 #                     X11/Mesa closure (measured 2026-08-25 with `docker history`), and spact-logic is an action
 #                     client with no display.
 #   Clearpath apt     repo, keyring, rosdep list -- plus wget/gnupg/lsb-release and xacro, which exist here only
@@ -45,13 +45,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- shared shell helpers ---------------------------------------------------
-# zenoh-connect.sh is THE one router logic for every container (ZENOH_LOCAL on the robot, ZENOH_STANDALONE for
+# zenoh-connect is THE one router logic for every container (ZENOH_LOCAL on the robot, ZENOH_STANDALONE for
 # the isolated graph, ROBOT_ZENOH_ENDPOINT for a remote one).  deploy/app-runner copies the same file through a
 # build context rather than keeping a second version of it.
-COPY scripts/zenoh-connect.sh /usr/local/bin/zenoh-connect.sh
-COPY scripts/clearlog.sh /usr/local/bin/clearlog.sh
-RUN chmod +x /usr/local/bin/zenoh-connect.sh
-# clearlog.sh is sourced, not executed -> deliberately no chmod +x, so nobody gets the idea to run it.
+#
+# ready-banner derives an entrypoint's "ready. Tools: ..." line from what is actually on /usr/local/bin. It is
+# here rather than in a final because ALL four entrypoints print that line, and a hand-kept list per entrypoint
+# is how one of them ended up advertising a tool that had moved to another image.
+COPY scripts/zenoh-connect /usr/local/bin/zenoh-connect
+COPY scripts/ready-banner /usr/local/bin/ready-banner
+COPY scripts/clearlog /usr/local/bin/clearlog
+RUN chmod +x /usr/local/bin/zenoh-connect /usr/local/bin/ready-banner
+# clearlog is sourced, not executed -> deliberately no chmod +x, so nobody gets the idea to run it.
+#
+# It is also the ONE file on /usr/local/bin that keeps a suffix, and that is a decision rather than an oversight:
+# `clearlog` is the name of a Python package in this workspace (libs/clearlog), and this is its shell half. The
+# suffix says which one you are looking at. Everything else there is a command a human types -- view-moveit,
+# teach-pose, zenoh-connect -- and commands do not carry file extensions.
 
 # --- shared ENV defaults ----------------------------------------------------
 # CLEARPATH_NS is the Husky namespace.  CLEARPATH_SETUP belongs to the roles that generate it and stays in the

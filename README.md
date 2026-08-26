@@ -11,7 +11,7 @@ reused everywhere.
 
 - **One base build, reused everywhere**: the layers every deploy image shares,
   distributed via GHCR so the finals cache against it.
-- **The one Zenoh router logic** (`zenoh-connect.sh`) instead of a copy per
+- **The one Zenoh router logic** (`zenoh-connect`) instead of a copy per
   final.
 - **`rmw_zenoh_cpp` — the middleware the robot speaks, and the only one we
   speak.** The image ships the package its own `RMW_IMPLEMENTATION` default
@@ -44,12 +44,12 @@ belongs to a stage, not here.
   names it, so it has to be here
 - `python3-rich` — the renderer behind [`clearlog`](../../libs/clearlog/README.md)'s
   Python handler; needed by every container that logs, display or not
-- `/usr/local/bin/zenoh-connect.sh` — **THE one Zenoh router logic** shared by all
+- `/usr/local/bin/zenoh-connect` — **THE one Zenoh router logic** shared by all
   containers (`ZENOH_LOCAL=1` on the robot, `ZENOH_STANDALONE=1` for the
   isolated mock graph, `ROBOT_ZENOH_ENDPOINT` for a remote one). Every entrypoint invokes it; the
   [app-runner](../app-runner/README.md) copies it via the build context.
   Changing Zenoh behavior = change only this file (rebuild + push the base).
-- `/usr/local/bin/clearlog.sh` — the shell half of `clearlog`, sourced (not
+- `/usr/local/bin/clearlog` — the shell half of `clearlog`, sourced (not
   executed) by every entrypoint and helper so container lines and Python lines
   share one format
 - ENV defaults: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, `ROS_DOMAIN_ID=0`,
@@ -58,7 +58,7 @@ belongs to a stage, not here.
 
 ### What is NOT included
 - **The noVNC desktop** — `Xvfb`, `x11vnc`, `noVNC`, `websockify`, `fluxbox`,
-  `xterm`, Mesa, the `resize=scale` patch and `start-desktop.sh` all live in
+  `xterm`, Mesa, the `resize=scale` patch and `start-desktop` all live in
   the `viewer` stage of
   [`husky-offboard`](../husky-offboard/README.md#image-structure), which is
   still one place to change them: `lite`, `offboard` and `mock-robot` all
@@ -135,7 +135,7 @@ docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 - [husky-offboard](../husky-offboard/README.md) — the four stages built on this
   base: `viewer`, `lite`, `offboard`, `mock-robot`, plus the `logic` image
 - [app-runner](../app-runner/README.md) — the one image for the thin SDK apps
-- [clearlog](../../libs/clearlog/README.md) — the log format `clearlog.sh`
+- [clearlog](../../libs/clearlog/README.md) — the log format `clearlog`
   implements for the shell side
 
 ## Versioning
