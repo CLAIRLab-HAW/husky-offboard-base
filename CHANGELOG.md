@@ -2,8 +2,8 @@
 
 What changed when. The current state is described in the [README](README.md).
 
-Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
-die Versionierung [Semantic Versioning](https://semver.org/lang/de/).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+the versioning [Semantic Versioning](https://semver.org/).
 
 ## 2026-08-26 (the downloaded .debs survive in a build cache)
 
