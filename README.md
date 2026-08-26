@@ -141,6 +141,25 @@ docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
 # ->  FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy@sha256:...
 ```
 
+## Running Tests
+
+This repo has no suite of its own — its four scripts are checked from
+[husky-offboard](../husky-offboard/README.md), because the rules worth checking
+are about the relationship between a script and the Dockerfiles that copy it
+(`test_ros_env_single_source.py`, `test_zenoh_isolation.py`,
+`test_entrypoint_roles.py`). The checks find this repo as a sibling directory,
+so both have to be checked out beside each other, as the workspace lays them
+out:
+
+```bash
+cd ../husky-offboard && uv run pytest tests -q
+```
+
+CI runs the same thing before it pushes the image, plus a `bash -n` over
+`scripts/` that needs no neighbour. Without the neighbour the cross-repo checks
+report themselves as skipped rather than passing quietly — see
+`husky-offboard/tests/siblings.py`.
+
 ## Related
 
 - [husky-offboard](../husky-offboard/README.md) — the four stages built on this

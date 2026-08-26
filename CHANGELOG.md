@@ -5,6 +5,19 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-26 (the push had no gate in front of it)
+
+- **`build-and-push` now `needs: test`.** Until today a push to `main` built this image and published it to GHCR
+  with nothing checked first, while the suite that checks its scripts sat in `husky-offboard`, which had no
+  workflow at all. The two halves were the wrong way round.
+- **The floor always runs**: `bash -n` over every file in `scripts/`. The behavioural checks live in the
+  neighbouring repo on purpose -- they compare a script against the Dockerfiles that copy it -- so the job checks
+  that repo out beside this one and runs its suite against this working tree. If the checkout fails (a private
+  repo needs a PAT rather than `GITHUB_TOKEN`), the job says so as a warning and the syntax floor still gates the
+  build, rather than a token problem turning into a red build.
+- **`README.md` gained the `Running Tests` section** the workspace README skeleton asks for, saying where the
+  tests actually are and why they are not here.
+
 ## 2026-08-26 (ros-env moved here, so every image can have the same one)
 
 - **`ros-env` — THE one ROS source chain — now lives in this repo and this image**, next to `zenoh-connect`,
