@@ -5,6 +5,33 @@ What changed when. The current state is described in the [README](README.md).
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
 die Versionierung [Semantic Versioning](https://semver.org/lang/de/).
 
+## 2026-08-26 (the downloaded .debs survive in a build cache)
+
+- **`docker-clean` is removed and `Keep-Downloaded-Packages` set**, so the apt cache mounts in this image and in
+  every derived stage actually hold something. Without it apt deletes each `.deb` right after installing it.
+- **The apt step mounts a BuildKit cache** for `/var/cache/apt` and `/var/lib/apt/lists`, keyed on `TARGETARCH`:
+  CI builds linux/amd64 AND linux/arm64, and `.deb`s of two architectures in one cache directory would be a
+  corrupt cache, not a fast one.
+- **Why:** measured 2026-08-26 against the real stack, rebuilding one invalidated apt layer spent 368 s of 577 s
+  downloading and 168 s unpacking. In an isolated counter-test the same layer took 62 s cold and 23 s warm. The
+  cache is a BUILD cache: nothing of it reaches a layer, `/var/lib/apt/lists` stays out of the images entirely,
+  and on a machine that has never built this the first build costs exactly what it did before.
+
+## 2026-08-26 (no package changelogs or examples -- and an honest measurement of what that is worth)
+
+- **`/etc/dpkg/dpkg.cfg.d/01_nodoc` excludes `/usr/share/doc/*` and keeps `*/copyright`.** dpkg reads that
+  directory on every install, so one file here covers every derived stage.
+- **The size claim that motivated it was wrong, and the file now says so.** `/usr/share/doc` is 172 MB in
+  `clearpath-offboard`, but measured 2026-08-26, **159 MB of that are `copyright` files** -- kept on purpose,
+  because this image is pushed to GHCR and shipping a binary without its licence text is not a size decision. Of
+  the remaining 7 MB most are changelogs installed by `ros:jazzy-ros-base` before this config existed. The
+  exclusion buys about a megabyte today; what it is really for is capping the next package that ships 50 MB of
+  examples.
+- **Where the weight actually sits, checked and left alone:** 57 `-dev` packages, 169 MB, in a runtime image --
+  `libvtk9-dev`, `libomp-18-dev`, `libhdf5-dev`, `libpcl-dev`, the boost dev chain. ROS debs declare them as hard
+  runtime `Depends` (`libpcl-dev` <- `ros-jazzy-velodyne-pointcloud`), so apt would take the depending package
+  with them. Upstream packaging, not something to fix here -- written down so nobody re-derives it.
+
 ## 2026-08-26 (clearlog.sh is clearlog, and the last dead fallback is gone)
 
 - **`clearlog.sh` is `clearlog`.** The suffix was kept one round longer on the argument that it distinguishes the

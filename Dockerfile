@@ -30,6 +30,45 @@ FROM ros:jazzy-ros-base
 
 SHELL ["/bin/bash", "-c"]
 ARG DEBIAN_FRONTEND=noninteractive
+# Set by BuildKit. The apt cache mounts below are keyed on it: CI builds linux/amd64 AND linux/arm64, and .debs of
+# two architectures in one cache directory would be a corrupt cache, not a fast one.
+ARG TARGETARCH
+
+# --- No package changelogs or examples, in this image and in every image built on it ---
+# dpkg reads /etc/dpkg/dpkg.cfg.d/ on EVERY install, so one file here covers the derived stages as well.
+#
+# Be honest about the size of this: it is SMALL. /usr/share/doc is 172 MB in clearpath-offboard, and measured
+# 2026-08-26, 159 MB of that are `copyright` files -- which the path-include below keeps on purpose, because this
+# image is pushed to GHCR and shipping a binary without its licence text is not a size decision. Of the remaining
+# 7 MB, most are changelogs from packages that ros:jazzy-ros-base installed before this config existed. What the
+# exclusion actually buys is roughly a megabyte today, plus a cap on the next package that ships 50 MB of
+# examples.
+#
+# man, info, locale and lintian are deliberately NOT excluded: 1-2 MB each, measured, and `man` in a debugging
+# shell is worth more than that.
+#
+# Where the weight really sits, also measured 2026-08-26 and NOT removable: 57 `-dev` packages, 169 MB, in a
+# runtime image -- libvtk9-dev, libomp-18-dev, libhdf5-dev, libpcl-dev and the boost dev chain. ROS debs declare
+# them as hard runtime Depends (`libpcl-dev` <- `ros-jazzy-velodyne-pointcloud`), so apt would take the depending
+# package with them. That is upstream packaging, not something to fix here.
+RUN mkdir -p /etc/dpkg/dpkg.cfg.d \
+    && printf 'path-exclude=/usr/share/doc/*\npath-include=/usr/share/doc/*/copyright\n' \
+        > /etc/dpkg/dpkg.cfg.d/01_nodoc
+
+# --- Let the downloaded .debs survive in a BuildKit cache mount --------------
+# Every apt step in this image and in the derived stages mounts a cache at /var/cache/apt (see the RUNs below and
+# in deploy/husky-offboard/Dockerfile). That only pays off if apt stops deleting what it downloaded, which the
+# `docker-clean` hook shipped in Debian/Ubuntu images does after every install.
+#
+# Why bother: measured 2026-08-26 against the real stack, a rebuild of one invalidated apt layer spent 368 s of
+# 577 s downloading and 168 s unpacking. In an isolated counter-test the same layer took 62 s cold and 23 s with
+# the cache warm.
+#
+# The cache is a BUILD cache, not part of the image: nothing here ends up in a layer, and /var/lib/apt/lists stays
+# out of the images entirely, which is why the apt steps no longer clean it themselves. On a machine that has
+# never built this (a fresh CI runner) the cache is empty and the first build costs exactly what it did before.
+RUN rm -f /etc/apt/apt.conf.d/docker-clean \
+    && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # --- The two runtime dependencies every image shares ------------------------
 # rmw_zenoh_cpp: the ENV block below names it as the default RMW, so it has to BE here.  Measured 2026-08-25 in
@@ -39,10 +78,11 @@ ARG DEBIAN_FRONTEND=noninteractive
 #
 # python3-rich: libs/clearlog renders its Python handler through it (rich.console/rule/table/text).  Every
 # container logs, display or not.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked,id=aptlists-${TARGETARCH} \
+    apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-rmw-zenoh-cpp \
-        python3-rich \
-    && rm -rf /var/lib/apt/lists/*
+        python3-rich
 
 # --- shared shell helpers ---------------------------------------------------
 # zenoh-connect is THE one router logic for every container (ZENOH_LOCAL on the robot, ZENOH_STANDALONE for
