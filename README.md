@@ -140,7 +140,7 @@ READMEs).
 For reproducible final builds, pin the base digest:
 ```bash
 docker buildx imagetools inspect ghcr.io/clairlab-haw/husky-offboard-base:jazzy
-# ->  FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy@sha256:...
+# ─▶  FROM ghcr.io/clairlab-haw/husky-offboard-base:jazzy@sha256:...
 ```
 
 ### Which architecture is rebuilt when
