@@ -1,7 +1,7 @@
 # husky-offboard-base
 
 Shared base image (ROS 2 Jazzy) for every container under
-[`deploy/`](../README.md) — the four stages of
+`deploy/` — the four stages of
 [`husky-offboard`](https://github.com/CLAIRLab-HAW/husky-offboard) and
 [`app-runner`](../app-runner/README.md). It carries the layers all of them
 share and nothing else, and is distributed via GHCR so one base build is

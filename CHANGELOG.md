@@ -5,6 +5,11 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+## 2026-08-27 (dead link in the README)
+
+- **The link on `deploy/` is gone.** It pointed at `../README.md`, and `deploy/README.md` does not exist -- the
+  directory holds the deploy repos but carries no README of its own. The code span stays, the link does not.
+
 ## 2026-08-26 (arm64 under QEMU on every push ate the Actions budget)
 
 - **A push to `main` rebuilds amd64 only; both architectures are built on a `v*` tag and on a manual run.**
