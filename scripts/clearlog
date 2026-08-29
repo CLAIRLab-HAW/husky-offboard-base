@@ -38,7 +38,7 @@ _cl_num() {
     return 0
 }
 
-# --- einmalige Initialisierung beim Sourcen --------------------------------
+# --- one-off initialisation on sourcing ------------------------------------
 
 _cl_threshold=20
 _cl_init_threshold() {
@@ -69,7 +69,7 @@ _cl_init_tty() {
     return 0
 }
 
-# GNU date kann %3N; BSD date gibt '%3N' literal aus.  Einmal pruefen, statt
+# GNU date can do %3N; BSD date prints '%3N' literally.  Check once instead
 # den Platzhalter in die Logs zu schreiben.
 _cl_ms=1
 _cl_init_ms() {
