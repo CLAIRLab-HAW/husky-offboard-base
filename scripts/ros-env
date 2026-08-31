@@ -37,5 +37,13 @@ source /opt/ros/jazzy/setup.bash
 #    ever set AMENT_PREFIX_PATH instead of extending it.
 [ -f /opt/onrobot-rg6/install/setup.bash ] && source /opt/onrobot-rg6/install/setup.bash
 
+# 5) husky-extras — husky_extras_description: the a200-0553's URDF extras (sensor arch, ArUco marker, and where
+#    the RG6 is bolted onto the UR5 flange).  robot.yaml lists it as the second workspace, so in the GENERATING
+#    role stage 3 already brings it in; this line is for the roles that never generate a setup.  Without it,
+#    RViz and the foxglove_bridge in the viewing containers cannot resolve
+#    package://husky_extras_description/meshes/husky_sensor_arch.gltf and draw the robot without its arch --
+#    silently, the same failure mode stage 4 exists for.
+[ -f /opt/husky-extras/install/setup.bash ] && source /opt/husky-extras/install/setup.bash
+
 case "${_ros_env_flags}" in *u*) set -u ;; *) set +u ;; esac
 unset _ros_env_flags

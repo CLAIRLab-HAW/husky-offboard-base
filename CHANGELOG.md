@@ -5,6 +5,20 @@ What changed when. The current state is described in the [README](README.md).
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 the versioning [Semantic Versioning](https://semver.org/).
 
+
+## 2026-08-31 (ros-env sources a fifth stage)
+
+- **`/opt/husky-extras/install/setup.bash` joins the chain**, after the rg6 overlay and for the same reason. The
+  a200-0553's URDF extras (sensor arch, ArUco marker, and where the RG6 is bolted onto the UR5 flange) moved out
+  of `rg6_description` into their own repo, and `robot.yaml` lists the new workspace next to the old one.
+- **The generating role would not have needed the line.** There `/clearpath/setup.bash` (stage 3) already sources
+  both workspaces, because that file is generated FROM `robot.yaml`. Stage 5 is for the roles that never generate
+  a setup: without it, RViz and the `foxglove_bridge` in `lite` and `offboard` cannot resolve
+  `package://husky_extras_description/meshes/husky_sensor_arch.gltf` and draw the robot without its arch --
+  silently, which is the failure mode stage 4 exists for as well.
+- Every stage stays guarded by `[ -f ... ]`, so the same file still works in `logic`, where four of the five never
+  exist.
+
 ## 2026-08-27 (dead link in the README)
 
 - **The link on `deploy/` is gone.** It pointed at `../README.md`, and `deploy/README.md` does not exist -- the
