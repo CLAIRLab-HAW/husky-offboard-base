@@ -6,7 +6,7 @@
 #     clearlog_name offboard.entry
 #     log_info "robot.yaml loaded -> %s" "$dest"
 #
-# Produces the same line as ClearlogHandler: symbols and colour on a terminal, the level as a word and a full
+# Produces the same line as ClearlogHandler: symbols and color on a terminal, the level as a word and a full
 # date without one -- so that `docker logs | grep WARN` carries. The two halves are tied together by a golden
 # test: libs/clearlog/tests/test_shell_parity.py.
 #
